@@ -1,3 +1,0 @@
-queries:
-  - id: orphanQuery
-    sql: "SELECT now()"

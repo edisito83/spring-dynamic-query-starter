@@ -56,3 +56,50 @@ pom.xml.versionsBackup
 pom.xml.next
 release.properties
 dependency-reduced-pom.xml
+
+# Eclipse specific
+.metadata/
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders/
+
+# Eclipse core
+.project
+.classpath
+
+# External tool builders
+.externalToolBuilders/
+
+# Locally stored "Eclipse launch configurations"
+*.launch
+
+# PyDev specific (if usas Python)
+.pydevproject
+
+# CDT-specific (if usas C/C++)
+.cproject
+
+# Java annotation processor (APT)
+.factorypath
+
+# PDT-specific (if usas PHP)
+.buildpath
+
+# CodeMix (if lo usas)
+.codemix
+
+# Ensime (if lo usas)
+.ensime
+.ensime_cache/
+
+# Scala IDE specific (if usas Scala)
+.scala_dependencies
+.worksheet
+
