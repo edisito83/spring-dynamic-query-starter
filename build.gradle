@@ -118,7 +118,7 @@ jar {
 
 // Configuración para tests con Spock
 test {
-	forkEvery = 1   // crea JVM nueva por cada test
+	forkEvery = 1
 	maxHeapSize = "2g"
 	
     useJUnitPlatform {
