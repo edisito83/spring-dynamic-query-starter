@@ -20,9 +20,8 @@ public class DynamicQueryExecutor {
     
     private final EntityManager entityManager;
     private final SqlQueryLoader queryLoader;
-    private final DynamicQueryProperties properties; // ✅ AGREGADO
+    private final DynamicQueryProperties properties;
     
-    // ✅ Constructor actualizado con properties
     public DynamicQueryExecutor(SqlQueryLoader queryLoader, 
                                EntityManager entityManager,
                                DynamicQueryProperties properties) {
@@ -32,7 +31,55 @@ public class DynamicQueryExecutor {
     }
     
     /**
-     * Ejecuta una consulta nombrada con filtros dinámicos
+     * Ejecuta una consulta nombrada con PARÁMETROS FIJOS (sin filtros dinámicos)
+     * Usar cuando la query ya tiene :param definidos y solo necesitas pasar valores
+     */
+    public <T> List<T> executeNamedQueryWithParameters(String queryName, Class<T> resultClass, 
+                                                       Map<String, Object> parameters) {
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            String sql = queryLoader.getQuery(queryName);
+            
+            Query query = entityManager.createNativeQuery(sql, resultClass);
+            
+            // Establecer parámetros directamente sin construir SQL dinámico
+            if (parameters != null) {
+                for (Map.Entry<String, Object> entry : parameters.entrySet()) {
+                    try {
+                        query.setParameter(entry.getKey(), entry.getValue());
+                        
+                        if (properties.getLogging().isLogParameters()) {
+                            log.debug("Set parameter '{}' = {} for query '{}'", 
+                                    entry.getKey(), entry.getValue(), queryName);
+                        }
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Parameter '{}' not found in query '{}', skipping", 
+                                entry.getKey(), queryName);
+                    }
+                }
+            }
+            
+            if (properties.getLogging().isEnabled()) {
+                if (properties.getLogging().isLogGeneratedSql()) {
+                    log.debug("Executing query '{}': {}", queryName, sql);
+                } else {
+                    log.debug("Executing query '{}'", queryName);
+                }
+            }
+            
+            return query.getResultList();
+            
+        } finally {
+            if (properties.getLogging().isLogExecutionTime()) {
+                long executionTime = System.currentTimeMillis() - startTime;
+                log.debug("Query '{}' executed in {} ms", queryName, executionTime);
+            }
+        }
+    }
+    
+    /**
+     * Ejecuta una consulta nombrada con FILTROS DINÁMICOS (condiciones opcionales)
      */
     public <T> List<T> executeNamedQuery(String queryName, Class<T> resultClass, 
                                         Map<String, FilterCriteria> filters) {
@@ -42,7 +89,6 @@ public class DynamicQueryExecutor {
             String baseSql = queryLoader.getQuery(queryName);
             return executeQuery(baseSql, resultClass, filters, queryName);
         } finally {
-            // ✅ USA properties.getLogging().isLogExecutionTime()
             if (properties.getLogging().isLogExecutionTime()) {
                 long executionTime = System.currentTimeMillis() - startTime;
                 log.debug("Query '{}' executed in {} ms", queryName, executionTime);
@@ -59,7 +105,7 @@ public class DynamicQueryExecutor {
     }
     
     /**
-     * Método interno que ejecuta la consulta
+     * Método interno que ejecuta la consulta con filtros dinámicos
      */
     @SuppressWarnings("unchecked")
     private <T> List<T> executeQuery(String baseSql, Class<T> resultClass, 
@@ -69,7 +115,6 @@ public class DynamicQueryExecutor {
         Query query = entityManager.createNativeQuery(finalSql, resultClass);
         setParameters(query, filters, queryName);
         
-        // ✅ USA properties.getLogging().isEnabled() y isLogGeneratedSql()
         if (properties.getLogging().isEnabled()) {
             if (properties.getLogging().isLogGeneratedSql()) {
                 log.debug("Executing query '{}': {}", queryName, finalSql);
@@ -95,7 +140,6 @@ public class DynamicQueryExecutor {
             Query query = entityManager.createNativeQuery(finalSql);
             setParameters(query, filters, queryName);
             
-            // ✅ USA properties.getLogging()
             if (properties.getLogging().isEnabled()) {
                 logQueryExecution(queryName, finalSql, filters);
             }
@@ -125,7 +169,6 @@ public class DynamicQueryExecutor {
             Query query = entityManager.createNativeQuery(finalSql);
             setParameters(query, filters, queryName);
             
-            // ✅ USA properties.getLogging()
             if (properties.getLogging().isEnabled()) {
                 logQueryExecution(queryName, finalSql, filters);
             }
@@ -219,7 +262,6 @@ public class DynamicQueryExecutor {
                     query.setParameter(entry.getKey(), criteria.getValue());
                     parametersSet++;
                     
-                    // ✅ USA properties.getLogging().isLogParameters()
                     if (properties.getLogging().isLogParameters()) {
                         log.debug("Set parameter '{}' = {} for query '{}'", 
                                 entry.getKey(), criteria.getValue(), queryName);
@@ -262,11 +304,9 @@ public class DynamicQueryExecutor {
             return;
         }
         
-        // ✅ USA properties.getLogging().isLogGeneratedSql()
         log.debug("Executing query '{}': {}", queryName, 
                 properties.getLogging().isLogGeneratedSql() ? sql : "[SQL hidden]");
         
-        // ✅ USA properties.getLogging().isLogParameters()
         if (properties.getLogging().isLogParameters() && filters != null) {
             filters.entrySet().stream()
                     .filter(entry -> entry.getValue().shouldApply())

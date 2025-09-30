@@ -1,0 +1,4 @@
+namespace: InvalidMapper
+queries:
+  - id: badSql
+    sql: "WRONG SYNTAX"

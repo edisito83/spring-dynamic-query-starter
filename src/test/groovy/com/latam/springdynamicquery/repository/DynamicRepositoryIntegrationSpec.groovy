@@ -6,14 +6,26 @@ import com.latam.springdynamicquery.testmodel.User
 import com.latam.springdynamicquery.testrepository.TestUserRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.jdbc.Sql
+
 import spock.lang.Specification
 
 /**
  * Tests de integración para DynamicRepository usando Spock.
  */
-@DataJpaTest
-@ContextConfiguration(classes = [TestApplication])
+@SpringBootTest(classes = [TestApplication])
+@TestPropertySource(properties = [
+    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=LEGACY",
+    "spring.jpa.hibernate.ddl-auto=none",
+    "spring.sql.init.mode=always"
+])
+@Sql(scripts = [
+	"classpath:sql/schema/h2-schema.sql",
+	"classpath:sql/data/test-data.sql"
+], executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class DynamicRepositoryIntegrationSpec extends Specification {
     
     @Autowired

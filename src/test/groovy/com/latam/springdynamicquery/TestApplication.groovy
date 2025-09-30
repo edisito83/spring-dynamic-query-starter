@@ -14,7 +14,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 /**
  * Aplicación de prueba para tests.
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = ["com.latam.springdynamicquery"])
 @EntityScan(basePackages = "com.latam.springdynamicquery.testmodel")
 class TestApplication {
     

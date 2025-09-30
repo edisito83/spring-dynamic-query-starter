@@ -24,7 +24,7 @@ public interface TestGuiaRepository extends DynamicRepository<GuiaDespacho, Long
         
         Map<String, FilterCriteria> filters = Map.of(
             "numeroGuia", FilterCriteria.whenNotEmpty(
-                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numeroawb NA WHERE NA.id = gd.id AND NA.numero LIKE :numeroGuia))",
+                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numero_awb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
                 "%" + numero + "%"
             )
         );
@@ -47,7 +47,7 @@ public interface TestGuiaRepository extends DynamicRepository<GuiaDespacho, Long
                                                LocalDate fechaInicio, LocalDate fechaFin) {
         Map<String, FilterCriteria> filters = Map.of(
             "numeroGuia", FilterCriteria.whenNotEmpty(
-                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numeroawb NA WHERE NA.id = gd.id AND NA.numero LIKE :numeroGuia))",
+                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numero_awb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
                 "%" + numero + "%"
             ),
             "estado", FilterCriteria.whenNotEmpty("gd.estado = :estado", estado),

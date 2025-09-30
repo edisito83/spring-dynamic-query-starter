@@ -5,6 +5,7 @@ import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.testrepository.TestUserRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
@@ -17,6 +18,7 @@ import spock.lang.Specification
  */
 @SpringBootTest(classes = [TestApplication])
 @Testcontainers
+@ActiveProfiles("postgresql")
 class PostgresContainerSpec extends Specification {
     
     @Shared
@@ -24,8 +26,12 @@ class PostgresContainerSpec extends Specification {
             .withDatabaseName("testdb")
             .withUsername("test")
             .withPassword("test")
-            .withInitScript("sql/schema/postgres-schema.sql")
-    
+            .withInitScripts(["sql/schema/postgres-schema.sql", "sql/data/test-data.sql"])
+	
+	static {
+		postgres.start()
+	}
+			
     @Autowired
     TestUserRepository userRepository
     

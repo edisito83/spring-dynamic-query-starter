@@ -91,6 +91,9 @@ dependencies {
     testImplementation "org.testcontainers:spock:${testcontainersVersion}"
     testImplementation "org.testcontainers:postgresql:${testcontainersVersion}"
     testImplementation "org.testcontainers:mysql:${testcontainersVersion}"
+	testImplementation "mysql:mysql-connector-java:8.0.33"
+	testImplementation "org.postgresql:postgresql:42.6.0"
+	
     
     // Test Databases
     testImplementation "com.h2database:h2:${h2Version}"
@@ -115,6 +118,9 @@ jar {
 
 // Configuración para tests con Spock
 test {
+	forkEvery = 1   // crea JVM nueva por cada test
+	maxHeapSize = "2g"
+	
     useJUnitPlatform {
         includeEngines 'junit-jupiter', 'spock'
     }

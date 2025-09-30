@@ -1,0 +1,11 @@
+namespace: UserMapper
+queries:
+  - id: findUserById
+    sql: |
+      SELECT * FROM users WHERE id = :id
+    parameters:
+      - name: id
+        required: true
+  - id: findActiveUsers
+    sql: |
+      SELECT * FROM users WHERE active = true

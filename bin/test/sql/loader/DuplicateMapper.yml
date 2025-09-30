@@ -1,0 +1,6 @@
+namespace: DupMapper
+queries:
+  - id: findUserById
+    sql: "SELECT 1"
+  - id: findUserById
+    sql: "SELECT 2"

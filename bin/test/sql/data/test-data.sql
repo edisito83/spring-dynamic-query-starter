@@ -1,4 +1,4 @@
-# ==================== src/test/resources/sql/data/test-data.sql ====================
+-- ==================== src/test/resources/sql/data/test-data.sql ====================
 -- Test data for all databases
 
 -- Insert departments
@@ -52,13 +52,16 @@ INSERT INTO guias_despacho (numero_guia, estado, cliente_id, observaciones) VALU
 ('ABC-12345', 'PENDIENTE', 2, 'Pendiente de confirmación');
 
 -- Insert numeroawb (for your specific OR EXISTS use case)
-INSERT INTO numeroawb (guia_id, numero, tipo, activo) VALUES 
+INSERT INTO numero_awb (guia_id, numero, tipo, activo) VALUES 
 (1, 'AWB001234567', 'AWB', TRUE),
 (1, 'AWB001234568', 'TRACKING', TRUE),
 (3, '12345', 'AWB', TRUE),  -- This will match the TEST123 search
 (3, 'TEST-AWB-001', 'AWB', TRUE),
 (4, 'URG789456123', 'EXPRESS', TRUE),
 (5, '12345-ALT', 'AWB', TRUE);  -- This will also match 12345 searches
+
+UPDATE guias_despacho SET fecha_creacion = '2024-01-02', fecha_despacho = '2024-12-30'
+WHERE id = 3 AND numero_guia = 'TEST123';
 
 -- Insert some historical data for date range testing
 INSERT INTO guias_despacho (numero_guia, estado, cliente_id, fecha_creacion, observaciones) VALUES 
@@ -91,7 +94,7 @@ INSERT INTO guias_despacho (numero_guia, estado, cliente_id, observaciones) VALU
 ('INTEGRATION-001', 'EN_TRANSITO', 1, 'Integration test guía'),
 ('COMPLEX-SEARCH-123', 'PENDIENTE', 2, 'Complex search test');
 
-INSERT INTO numeroawb (guia_id, numero, tipo, activo) VALUES 
+INSERT INTO numero_awb (guia_id, numero, tipo, activo) VALUES 
 (8, 'INTEGRATION-AWB-001', 'AWB', TRUE),
 (9, 'COMPLEX-123', 'AWB', TRUE),
 (9, 'SEARCH-456', 'TRACKING', TRUE);

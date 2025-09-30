@@ -112,22 +112,32 @@ public class SqlQueryLoader implements InitializingBean {
 			int queriesLoaded = 0;
 			for (SqlMapperYaml.QueryDefinition query : sqlMapper.getQueries()) {
 				if (isValidQueryDefinition(query, resource.getFilename())) {
-					String queryKey = sqlMapper.getQueryKey(query.getId());
+					String fullQueryKey = sqlMapper.getQueryKey(query.getId());
+					String shortQueryKey = extractShortNamespace(fullQueryKey);
 					String cleanSql = cleanSql(query.getSql());
 					
-					log.debug("Query key {}", queryKey);
+					log.debug("Loading query - Full key: {}, Short key: {}", fullQueryKey, shortQueryKey);
 
 					// Verificar duplicados
-					if (queryCache.containsKey(queryKey)) {
+					if (queryCache.containsKey(fullQueryKey)) {
 						log.warn("Duplicate query key found: {} in file: {}. Previous definition will be overwritten.",
-								queryKey, resource.getFilename());
+								fullQueryKey, resource.getFilename());
 					}
 
-					queryCache.put(queryKey, cleanSql);
-					queryMetadata.put(queryKey, query);
+					// Guardar con ambas claves: la completa y la corta
+					queryCache.put(fullQueryKey, cleanSql);
+					queryMetadata.put(fullQueryKey, query);
+					
+					// Si la clave corta es diferente, también la guardamos
+					if (!fullQueryKey.equals(shortQueryKey)) {
+						queryCache.put(shortQueryKey, cleanSql);
+						queryMetadata.put(shortQueryKey, query);
+						log.debug("Also stored with short key: {}", shortQueryKey);
+					}
+					
 					queriesLoaded++;
 
-					log.trace("Loaded query: {} -> {}", queryKey,
+					log.trace("Loaded query: {} -> {}", fullQueryKey,
 							cleanSql.substring(0, Math.min(50, cleanSql.length())) + "...");
 				}
 			}
@@ -144,22 +154,56 @@ public class SqlQueryLoader implements InitializingBean {
 	}
 
 	/**
+	 * Extrae un namespace corto desde una clave completa.
+	 * Ejemplo: com.latam.springdynamicquery.test.UserMapper.findUserById -> UserMapper.findUserById
+	 */
+	private String extractShortNamespace(String fullKey) {
+		if (fullKey == null || !fullKey.contains(".")) {
+			return fullKey;
+		}
+		
+		// Buscar el penúltimo punto para extraer "Mapper.queryId"
+		int lastDot = fullKey.lastIndexOf(".");
+		if (lastDot > 0) {
+			String beforeLastDot = fullKey.substring(0, lastDot);
+			int secondLastDot = beforeLastDot.lastIndexOf(".");
+			
+			if (secondLastDot > 0) {
+				// Retornar desde el penúltimo punto (incluye Mapper.queryId)
+				return fullKey.substring(secondLastDot + 1);
+			}
+		}
+		
+		return fullKey;
+	}
+
+	/**
 	 * Obtiene una consulta del caché usando namespace.id o solo id.
 	 */
 	public String getQuery(String queryKey) {
-		log.debug("Searching query key {}", queryKey);
+		log.debug("Searching query key: {}", queryKey);
 		
 		if (!properties.isPreloadEnabled()) {
 			return loadQueryDynamically(queryKey);
 		}
 		
+		// Búsqueda exacta primero
 		String query = queryCache.get(queryKey);
-		log.debug("Query from cache is {}", query);
+		log.debug("Query from cache (exact match): {}", query != null ? "FOUND" : "NOT FOUND");
 		
+		// Si no se encuentra, intentar con la clave corta
 		if (query == null) {
-			// Intentar búsqueda flexible sin namespace completo
+			String shortKey = extractShortNamespace(queryKey);
+			if (!shortKey.equals(queryKey)) {
+				query = queryCache.get(shortKey);
+				log.debug("Query from cache (short key {}): {}", shortKey, query != null ? "FOUND" : "NOT FOUND");
+			}
+		}
+		
+		// Si aún no se encuentra, intentar búsqueda flexible
+		if (query == null) {
 			query = findQueryWithoutFullNamespace(queryKey);
-			log.debug("Query from cache without full namespace is {}", query);
+			log.debug("Query from cache (flexible search): {}", query != null ? "FOUND" : "NOT FOUND");
 		}
 
 		if (query == null) {
@@ -175,6 +219,10 @@ public class SqlQueryLoader implements InitializingBean {
 	 */
 	public SqlMapperYaml.QueryDefinition getQueryMetadata(String queryKey) {
 		SqlMapperYaml.QueryDefinition metadata = queryMetadata.get(queryKey);
+		if (metadata == null) {
+			String shortKey = extractShortNamespace(queryKey);
+			metadata = queryMetadata.get(shortKey);
+		}
 		if (metadata == null) {
 			metadata = findQueryMetadataWithoutFullNamespace(queryKey);
 		}
@@ -194,23 +242,45 @@ public class SqlQueryLoader implements InitializingBean {
 			}
 		}
 
-		return queryCache.containsKey(queryKey) || findQueryWithoutFullNamespace(queryKey) != null;
+		return queryCache.containsKey(queryKey) 
+			|| queryCache.containsKey(extractShortNamespace(queryKey))
+			|| findQueryWithoutFullNamespace(queryKey) != null;
 	}
 
 	/**
 	 * Obtiene todas las consultas disponibles agrupadas por namespace.
 	 */
 	public Map<String, List<String>> getAvailableQueriesByNamespace() {
-		return queryCache.keySet().stream().collect(Collectors.groupingBy(this::extractNamespaceFromKey,
+		return queryCache.keySet().stream()
+			.filter(key -> !isDuplicateShortKey(key)) // Filtrar duplicados de claves cortas
+			.collect(Collectors.groupingBy(this::extractNamespaceFromKey,
 				Collectors.mapping(this::extractQueryIdFromKey, Collectors.toList())));
+	}
+
+	/**
+	 * Verifica si una clave es un duplicado de clave corta.
+	 */
+	private boolean isDuplicateShortKey(String key) {
+		// Si existe una versión más larga de esta clave, considerarla duplicado
+		String shortKey = extractShortNamespace(key);
+		if (!shortKey.equals(key)) {
+			return false; // Es una clave larga
+		}
+		
+		// Verificar si hay una clave que termine con esta clave corta
+		return queryCache.keySet().stream()
+			.anyMatch(k -> !k.equals(key) && k.endsWith("." + key));
 	}
 
 	/**
 	 * Obtiene todas las consultas de un namespace específico.
 	 */
 	public Set<String> getQueriesForNamespace(String namespace) {
-		return queryCache.keySet().stream().filter(key -> extractNamespaceFromKey(key).equals(namespace))
-				.map(this::extractQueryIdFromKey).collect(Collectors.toSet());
+		return queryCache.keySet().stream()
+			.filter(key -> extractNamespaceFromKey(key).equals(namespace) 
+				|| extractNamespaceFromKey(key).endsWith("." + namespace))
+			.map(this::extractQueryIdFromKey)
+			.collect(Collectors.toSet());
 	}
 
 	/**
@@ -224,8 +294,15 @@ public class SqlQueryLoader implements InitializingBean {
 	 * Obtiene estadísticas del loader.
 	 */
 	public LoaderStats getStats() {
-		return new LoaderStats(queryCache.size(), getLoadedNamespaceCount(), queryMetadata.values().stream()
-				.mapToInt(q -> q.getParameters() != null ? q.getParameters().size() : 0).sum());
+		// Contar solo las claves únicas (sin duplicados de claves cortas)
+		long uniqueQueries = queryCache.keySet().stream()
+			.filter(key -> !isDuplicateShortKey(key))
+			.count();
+			
+		return new LoaderStats((int) uniqueQueries, getLoadedNamespaceCount(), 
+			queryMetadata.values().stream()
+				.mapToInt(q -> q.getParameters() != null ? q.getParameters().size() : 0)
+				.sum());
 	}
 
 	// ==================== Métodos auxiliares privados ====================
@@ -268,21 +345,20 @@ public class SqlQueryLoader implements InitializingBean {
 		if (sql == null)
 			return "";
 
-		// Limpiar el SQL: mantener estructura pero normalizar espacios
-		return sql.trim().replaceAll("\\s+", " ") // Múltiples espacios por uno solo
-				.replaceAll("\\s*\\n\\s*", " ") // Saltos de línea por espacios
+		return sql.trim().replaceAll("\\s+", " ")
+				.replaceAll("\\s*\\n\\s*", " ")
 				.trim();
 	}
 
 	private String findQueryWithoutFullNamespace(String queryKey) {
-		// Si ya contiene punto, buscar exact match
 		if (queryKey.contains(".")) {
 			return queryCache.get(queryKey);
 		}
 
-		// Si no contiene punto, buscar consultas que terminen con .queryKey
-		List<String> matches = queryCache.entrySet().stream().filter(entry -> entry.getKey().endsWith("." + queryKey))
-				.map(Map.Entry::getValue).toList();
+		List<String> matches = queryCache.entrySet().stream()
+			.filter(entry -> entry.getKey().endsWith("." + queryKey))
+			.map(Map.Entry::getValue)
+			.toList();
 
 		if (matches.isEmpty()) {
 			return null;
@@ -302,7 +378,9 @@ public class SqlQueryLoader implements InitializingBean {
 		}
 
 		List<SqlMapperYaml.QueryDefinition> matches = queryMetadata.entrySet().stream()
-				.filter(entry -> entry.getKey().endsWith("." + queryKey)).map(Map.Entry::getValue).toList();
+				.filter(entry -> entry.getKey().endsWith("." + queryKey))
+				.map(Map.Entry::getValue)
+				.toList();
 
 		return matches.isEmpty() ? null : matches.get(0);
 	}
@@ -318,7 +396,11 @@ public class SqlQueryLoader implements InitializingBean {
 	}
 
 	private long getLoadedNamespaceCount() {
-		return queryCache.keySet().stream().map(this::extractNamespaceFromKey).distinct().count();
+		return queryCache.keySet().stream()
+			.filter(key -> !isDuplicateShortKey(key))
+			.map(this::extractNamespaceFromKey)
+			.distinct()
+			.count();
 	}
 
 	private void logLoadedQueries() {
@@ -335,6 +417,11 @@ public class SqlQueryLoader implements InitializingBean {
 		for (Map.Entry<String, SqlMapperYaml.QueryDefinition> entry : queryMetadata.entrySet()) {
 			String queryKey = entry.getKey();
 			SqlMapperYaml.QueryDefinition query = entry.getValue();
+
+			// Validar solo las claves largas para evitar duplicados
+			if (isDuplicateShortKey(queryKey)) {
+				continue;
+			}
 
 			try {
 				validateQuery(queryKey, query);
@@ -358,17 +445,14 @@ public class SqlQueryLoader implements InitializingBean {
 	}
 
 	private void validateQuery(String queryKey, SqlMapperYaml.QueryDefinition query) {
-		// Validar SQL no vacío
 		if (query.getSql() == null || query.getSql().trim().isEmpty()) {
 			throw new InvalidQueryException(queryKey, "SQL is empty or null");
 		}
 
-		// Validar sintaxis SQL básica si está habilitado
 		if (properties.getValidation().isValidateSqlSyntax()) {
 			validateBasicSqlSyntax(queryKey, query.getSql());
 		}
 
-		// Validar parámetros requeridos
 		if (properties.getValidation().isValidateRequiredParameters() && query.hasParameters()) {
 			validateRequiredParameters(queryKey, query);
 		}
@@ -377,13 +461,11 @@ public class SqlQueryLoader implements InitializingBean {
 	private void validateBasicSqlSyntax(String queryKey, String sql) {
 		String upperSql = sql.toUpperCase().trim();
 
-		// Validaciones básicas
 		if (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("INSERT")
 				&& !upperSql.startsWith("UPDATE") && !upperSql.startsWith("DELETE")) {
 			throw new InvalidQueryException(queryKey, "SQL must start with SELECT, INSERT, UPDATE, DELETE, or WITH");
 		}
 
-		// Verificar balance de paréntesis
 		long openParens = sql.chars().filter(ch -> ch == '(').count();
 		long closeParens = sql.chars().filter(ch -> ch == ')').count();
 
@@ -421,8 +503,11 @@ public class SqlQueryLoader implements InitializingBean {
 
 			try (InputStream inputStream = resource.getInputStream()) {
 				SqlMapperYaml sqlMapper = yamlMapper.readValue(inputStream, SqlMapperYaml.class);
-				return sqlMapper.getQueries().stream().filter(q -> queryKey.endsWith("." + q.getId())).findFirst()
-						.map(q -> cleanSql(q.getSql())).orElseThrow(() -> new QueryNotFoundException(queryKey));
+				return sqlMapper.getQueries().stream()
+					.filter(q -> queryKey.endsWith("." + q.getId()))
+					.findFirst()
+					.map(q -> cleanSql(q.getSql()))
+					.orElseThrow(() -> new QueryNotFoundException(queryKey));
 			}
 		} catch (IOException e) {
 			throw new QueryNotFoundException(queryKey, "Failed to load query dynamically: " + e.getMessage());
@@ -430,14 +515,10 @@ public class SqlQueryLoader implements InitializingBean {
 	}
 
 	private String extractFilenameFromNamespace(String namespace) {
-		// Extraer solo la última parte del namespace para usar como nombre de archivo
 		int lastDot = namespace.lastIndexOf(".");
 		return lastDot > 0 ? namespace.substring(lastDot + 1) : namespace;
 	}
 
-	/**
-	 * Estadísticas del loader.
-	 */
 	public static class LoaderStats {
 		private final int totalQueries;
 		private final long totalNamespaces;
@@ -463,8 +544,8 @@ public class SqlQueryLoader implements InitializingBean {
 
 		@Override
 		public String toString() {
-			return String.format("LoaderStats{queries=%d, namespaces=%d, parameters=%d}", totalQueries, totalNamespaces,
-					totalParameters);
+			return String.format("LoaderStats{queries=%d, namespaces=%d, parameters=%d}", 
+				totalQueries, totalNamespaces, totalParameters);
 		}
 	}
 }

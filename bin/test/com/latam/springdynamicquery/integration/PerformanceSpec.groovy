@@ -1,12 +1,15 @@
 package com.latam.springdynamicquery.integration
 
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.jdbc.Sql
+
 import com.latam.springdynamicquery.TestApplication
 import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.core.loader.SqlQueryLoader
 import com.latam.springdynamicquery.testrepository.TestUserRepository
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.TestPropertySource
+
 import spock.lang.Specification
 import spock.lang.Timeout
 
@@ -16,8 +19,15 @@ import spock.lang.Timeout
 @SpringBootTest(classes = [TestApplication])
 @TestPropertySource(properties = [
     "app.dynamic-query.cache.enabled=true",
-    "app.dynamic-query.logging.enabled=false"
+    "app.dynamic-query.logging.enabled=false",
+	"spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=LEGACY",
+	"spring.jpa.hibernate.ddl-auto=none",
+	"spring.sql.init.mode=always"
 ])
+@Sql(scripts = [
+	"classpath:sql/schema/h2-schema.sql",
+	"classpath:sql/data/test-data.sql"
+], executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class PerformanceSpec extends Specification {
     
     @Autowired

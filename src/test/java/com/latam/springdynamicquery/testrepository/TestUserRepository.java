@@ -35,12 +35,9 @@ public interface TestUserRepository extends DynamicRepository<User, Long> {
     default Optional<User> findUserByIdFromYaml(Long id) {
         if (id == null) return Optional.empty();
         
-        Map<String, FilterCriteria> filters = Map.of(
-            "id", FilterCriteria.when("", id)
-        );
+        Map<String, Object> params = Map.of("id", id);
         
-        List<User> users = executeNamedQuery("UserMapper.findUserById", filters);
-        return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
+        return executeSingleResultWithParams("UserMapper.findUserById", params);
     }
     
     default List<User> findAllActiveUsersFromYaml() {

@@ -1,17 +1,30 @@
 package com.latam.springdynamicquery.integration
 
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.jdbc.Sql
+
 import com.latam.springdynamicquery.TestApplication
 import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.exception.QueryNotFoundException
 import com.latam.springdynamicquery.testrepository.TestUserRepository
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
+
 import spock.lang.Specification
 
 /**
  * Tests de manejo de errores para el sistema de consultas dinámicas.
  */
 @SpringBootTest(classes = [TestApplication])
+@TestPropertySource(properties = [
+	"spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=LEGACY",
+	"spring.jpa.hibernate.ddl-auto=none",
+	"spring.sql.init.mode=always"
+])
+@Sql(scripts = [
+	"classpath:sql/schema/h2-schema.sql",
+	"classpath:sql/data/test-data.sql"
+], executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class ErrorHandlingSpec extends Specification {
     
     @Autowired
@@ -34,6 +47,7 @@ class ErrorHandlingSpec extends Specification {
         
         then:
         users != null
+		users.size() == 8
         noExceptionThrown()
     }
     
@@ -59,7 +73,10 @@ class ErrorHandlingSpec extends Specification {
         then:
         users != null
         noExceptionThrown()
-        // Only email filter should be applied, name filter should be skipped
+		users.size() == 1
+		
+		and: "los ids son exactamente los esperados"
+		users*.name.toSet() == ['Test User'] as Set
     }
     
     def "should handle SQL injection attempts safely"() {
@@ -75,7 +92,6 @@ class ErrorHandlingSpec extends Specification {
         then:
         users != null
         noExceptionThrown()
-        // Parameter binding should prevent SQL injection
     }
     
     def "should handle database connection errors gracefully"() {

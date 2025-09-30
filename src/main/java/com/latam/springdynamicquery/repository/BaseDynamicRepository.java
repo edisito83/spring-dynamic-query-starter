@@ -1,7 +1,9 @@
 package com.latam.springdynamicquery.repository;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.support.JpaEntityInformation;
 import org.springframework.data.jpa.repository.support.SimpleJpaRepository;
@@ -41,6 +43,8 @@ public class BaseDynamicRepository<T, ID> extends SimpleJpaRepository<T, ID> imp
 		this.entityManager = entityManager;
 		this.queryExecutor = queryExecutor;
 	}
+	
+	// ==================== Métodos con FilterCriteria (filtros dinámicos) ====================
 
 	@Override
 	public List<T> executeNamedQuery(String queryName, Map<String, FilterCriteria> filters) {
@@ -77,6 +81,43 @@ public class BaseDynamicRepository<T, ID> extends SimpleJpaRepository<T, ID> imp
 
 		return query.getResultList();
 	}
+	
+	// ==================== Métodos con parámetros fijos (sin filtros dinámicos) ====================
+
+    /**
+     * Ejecuta una query nombrada con parámetros fijos.
+     * Usar cuando la query tiene :param definidos y NO necesitas agregar condiciones dinámicas.
+     * 
+     * Ejemplo:
+     * SQL: SELECT * FROM users WHERE id = :id
+     * Uso: executeNamedQueryWithParams("findUser", Map.of("id", 123L))
+     */
+    public List<T> executeNamedQueryWithParams(String queryName, Map<String, Object> parameters) {
+        return queryExecutor.executeNamedQueryWithParameters(queryName, entityClass, parameters);
+    }
+
+    /**
+     * Ejecuta una query nombrada con parámetros fijos y devuelve un resultado único.
+     */
+    public Optional<T> executeSingleResultWithParams(String queryName, Map<String, Object> parameters) {
+        List<T> results = executeNamedQueryWithParams(queryName, parameters);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    /**
+     * Ejecuta una query nombrada sin parámetros.
+     */
+    public List<T> executeNamedQuery(String queryName) {
+        return executeNamedQuery(queryName, Collections.emptyMap());
+    }
+
+    /**
+     * Ejecuta una query nombrada sin parámetros y devuelve un resultado único.
+     */
+    public Optional<T> executeSingleResult(String queryName) {
+        List<T> results = executeNamedQuery(queryName);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
 
 	/**
 	 * Obtiene la clase de entidad gestionada por este repository.

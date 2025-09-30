@@ -1,14 +1,23 @@
 package com.latam.springdynamicquery.integration
 
+import javax.sql.DataSource
+
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.core.io.ClassPathResource
+import org.springframework.jdbc.datasource.init.ScriptUtils
+import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.jdbc.Sql
+import org.testcontainers.containers.MySQLContainer
+import org.testcontainers.spock.Testcontainers
+
 import com.latam.springdynamicquery.TestApplication
 import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.testrepository.TestGuiaRepository
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.spock.Testcontainers
+
 import spock.lang.Shared
 import spock.lang.Specification
 
@@ -17,6 +26,7 @@ import spock.lang.Specification
  */
 @SpringBootTest(classes = [TestApplication])
 @Testcontainers
+@ActiveProfiles("mysql")
 class MySqlContainerSpec extends Specification {
     
     @Shared
@@ -24,11 +34,15 @@ class MySqlContainerSpec extends Specification {
             .withDatabaseName("testdb")
             .withUsername("test")
             .withPassword("test")
-            .withInitScript("sql/schema/mysql-schema.sql")
+            .withInitScripts(["sql/schema/mysql-schema.sql", "sql/data/test-data.sql"])
     
+	static {
+		mysql.start()
+	}
+	
     @Autowired
     TestGuiaRepository guiaRepository
-    
+	
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", mysql::getJdbcUrl)
@@ -37,7 +51,7 @@ class MySqlContainerSpec extends Specification {
         registry.add("spring.jpa.hibernate.ddl-auto") { "validate" }
         registry.add("spring.jpa.database-platform") { "org.hibernate.dialect.MySQL8Dialect" }
     }
-    
+	
     def "should work with MySQL container"() {
         given:
         mysql.isRunning()
@@ -64,7 +78,7 @@ class MySqlContainerSpec extends Specification {
         given:
         def filters = [
             "numeroGuia": FilterCriteria.whenNotEmpty(
-                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numeroawb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
+                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numero_awb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
                 "%COMPLEX%"
             ),
             "dateRange": FilterCriteria.always(

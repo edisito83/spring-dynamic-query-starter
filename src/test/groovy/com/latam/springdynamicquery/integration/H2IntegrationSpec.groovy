@@ -6,19 +6,26 @@ import com.latam.springdynamicquery.testmodel.GuiaDespacho
 import com.latam.springdynamicquery.testrepository.TestGuiaRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.jdbc.Sql
+
 import spock.lang.Specification
 
 /**
  * Tests de integración con H2 usando Spock.
  */
-@DataJpaTest
-@ContextConfiguration(classes = [TestApplication])
+@SpringBootTest(classes = [TestApplication])
 @TestPropertySource(properties = [
-    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
-    "spring.jpa.hibernate.ddl-auto=create-drop"
+    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=LEGACY",
+    "spring.jpa.hibernate.ddl-auto=none",
+    "spring.sql.init.mode=always"
 ])
+@Sql(scripts = [
+	"classpath:sql/schema/h2-schema.sql",
+	"classpath:sql/data/test-data.sql"
+], executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class H2IntegrationSpec extends Specification {
     
     @Autowired
@@ -39,7 +46,10 @@ class H2IntegrationSpec extends Specification {
         then:
         guias != null
         guias.size() > 0
-        // Should find guías that match either numero_guia or AWB numero
+		guias.size() == 3
+		
+		and: "los ids son exactamente los esperados"
+		guias*.id.toSet() == [1L, 3L, 5L] as Set
     }
     
     def "should handle advanced search in H2"() {
@@ -52,14 +62,17 @@ class H2IntegrationSpec extends Specification {
         
         then:
         guias != null
-        // Should execute the complex query successfully
+		guias.size() == 1
+		
+		and: "los ids son exactamente los esperados"
+		guias*.id.toSet() == [3L] as Set
     }
     
     def "should validate SQL execution with H2 dialect"() {
         given:
         def filters = [
             "numeroGuia": FilterCriteria.whenNotEmpty(
-                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numeroawb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
+                "(gd.numero_guia LIKE :numeroGuia OR EXISTS(SELECT 1 FROM numero_awb NA WHERE NA.guia_id = gd.id AND NA.numero LIKE :numeroGuia))",
                 "%COMPLEX%"
             )
         ]
@@ -69,6 +82,5 @@ class H2IntegrationSpec extends Specification {
         
         then:
         guias != null
-        // Complex query should execute without SQL syntax errors
     }
 }
