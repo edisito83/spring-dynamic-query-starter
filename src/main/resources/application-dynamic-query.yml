@@ -1,0 +1,32 @@
+# Default configuration for Spring Dynamic Query Starter
+app:
+  dynamic-query:
+    enabled: true
+    preload-enabled: true
+    base-path: sql
+    scan-packages:
+      - "sql/*.yml"
+      - "sql/*.yaml"
+    yaml-extension: yml
+    encoding: UTF-8
+    cache:
+      enabled: true
+      size: 1000
+    logging:
+      enabled: false
+      log-parameters: false
+    validation:
+      strict-mode: false
+      validate-at-startup: true
+    repository:
+      base-packages: 
+        - "com.company.repository"
+        - "com.company.*.repository"
+      custom-factory-enabled: true
+
+# Logging configuration for the library
+logging:
+  level:
+    com.latam.springdynamicquery: INFO
+    com.latam.springdynamicquery.core.loader: DEBUG
+    com.latam.springdynamicquery.core.executor: DEBUG

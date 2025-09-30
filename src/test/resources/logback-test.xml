@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>build/logs/test.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <!-- Library loggers -->
+    <logger name="com.latam.springdynamicquery" level="DEBUG"/>
+    <logger name="com.latam.springdynamicquery.core.loader" level="TRACE"/>
+    
+    <!-- Spring loggers -->
+    <logger name="org.springframework.boot.autoconfigure" level="INFO"/>
+    <logger name="org.springframework.test" level="INFO"/>
+    
+    <!-- Database loggers -->
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+    
+    <!-- Test containers -->
+    <logger name="org.testcontainers" level="INFO"/>
+    <logger name="com.github.dockerjava" level="WARN"/>
+    
+    <!-- H2 Database -->
+    <logger name="org.h2" level="WARN"/>
+    
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

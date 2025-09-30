@@ -1,0 +1,132 @@
+{
+  "groups": [
+    {
+      "name": "app.dynamic-query",
+      "type": "com.latam.springdynamicquery.autoconfigure.DynamicQueryProperties",
+      "description": "Configuration properties for Spring Dynamic Query Starter."
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.dynamic-query.enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable or disable dynamic query functionality."
+    },
+    {
+      "name": "app.dynamic-query.preload-enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable preloading of SQL queries at application startup."
+    },
+    {
+      "name": "app.dynamic-query.base-path",
+      "type": "java.lang.String",
+      "defaultValue": "sql",
+      "description": "Base path for SQL query files."
+    },
+    {
+      "name": "app.dynamic-query.scan-packages",
+      "type": "java.util.List<java.lang.String>",
+      "defaultValue": ["sql/*.yml", "sql/*.yaml"],
+      "description": "List of packages to scan for SQL query YAML files."
+    },
+    {
+      "name": "app.dynamic-query.yaml-extension",
+      "type": "java.lang.String",
+      "defaultValue": "yml",
+      "description": "File extension for YAML query files."
+    },
+    {
+      "name": "app.dynamic-query.encoding",
+      "type": "java.lang.String",
+      "defaultValue": "UTF-8",
+      "description": "Character encoding for reading query files."
+    },
+    {
+      "name": "app.dynamic-query.cache-enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Enable caching of parsed queries."
+    },
+    {
+      "name": "app.dynamic-query.cache-size",
+      "type": "java.lang.Integer",
+      "defaultValue": 1000,
+      "description": "Maximum number of queries to cache."
+    },
+    {
+      "name": "app.dynamic-query.logging.enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": false,
+      "description": "Enable detailed logging of query execution."
+    },
+    {
+      "name": "app.dynamic-query.logging.log-parameters",
+      "type": "java.lang.Boolean",
+      "defaultValue": false,
+      "description": "Log query parameters (be careful with sensitive data)."
+    },
+    {
+      "name": "app.dynamic-query.validation.strict-mode",
+      "type": "java.lang.Boolean",
+      "defaultValue": false,
+      "description": "Enable strict validation of query files and parameters."
+    },
+    {
+      "name": "app.dynamic-query.validation.validate-at-startup",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Validate all queries at application startup."
+    }
+  ],
+  "hints": [
+    {
+      "name": "app.dynamic-query.scan-packages",
+      "values": [
+        {
+          "value": "sql/*.yml",
+          "description": "Scan YAML files in sql directory"
+        },
+        {
+          "value": "sql/**/*.yml",
+          "description": "Scan YAML files in sql directory and subdirectories"
+        },
+        {
+          "value": "queries/*.yaml",
+          "description": "Scan YAML files in queries directory"
+        }
+      ]
+    },
+    {
+      "name": "app.dynamic-query.yaml-extension",
+      "values": [
+        {
+          "value": "yml",
+          "description": "YAML extension"
+        },
+        {
+          "value": "yaml",
+          "description": "Full YAML extension"
+        }
+      ]
+    },
+    {
+      "name": "app.dynamic-query.encoding",
+      "values": [
+        {
+          "value": "UTF-8",
+          "description": "UTF-8 encoding (recommended)"
+        },
+        {
+          "value": "ISO-8859-1",
+          "description": "Latin-1 encoding"
+        },
+        {
+          "value": "UTF-16",
+          "description": "UTF-16 encoding"
+        }
+      ]
+    }
+  ]
+}
