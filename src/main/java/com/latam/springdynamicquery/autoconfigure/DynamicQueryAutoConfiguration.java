@@ -1,5 +1,6 @@
 package com.latam.springdynamicquery.autoconfigure;
 
+import com.latam.springdynamicquery.autoconfigure.condition.OnDynamicQueryEnabled;
 import com.latam.springdynamicquery.core.executor.DynamicQueryExecutor;
 import com.latam.springdynamicquery.core.loader.SqlQueryLoader;
 //import com.latam.springdynamicquery.repository.BaseDynamicRepository;
@@ -24,9 +25,8 @@ import jakarta.persistence.EntityManager;
 @Slf4j
 @AutoConfiguration(after = HibernateJpaAutoConfiguration.class)
 @ConditionalOnClass({EntityManager.class})
-@ConditionalOnProperty(value = "app.dynamic-query.enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(DynamicQueryProperties.class)
-//@EnableJpaRepositories(repositoryBaseClass = BaseDynamicRepository.class)
+@OnDynamicQueryEnabled
 public class DynamicQueryAutoConfiguration {
     
     /**

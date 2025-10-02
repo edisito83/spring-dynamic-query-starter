@@ -6,6 +6,7 @@ import java.util.Map;
 import com.latam.springdynamicquery.autoconfigure.DynamicQueryProperties;
 import com.latam.springdynamicquery.core.criteria.FilterCriteria;
 import com.latam.springdynamicquery.core.loader.SqlQueryLoader;
+import com.latam.springdynamicquery.util.SqlUtils;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -203,8 +204,8 @@ public class DynamicQueryExecutor {
             return baseSql;
         }
         
-        String whereClause = determineWhereClause(baseSql);
-        sqlBuilder.append(whereClause);
+        SqlUtils.WhereInfo whereInfo = SqlUtils.analyzeWhereClause(baseSql);
+        sqlBuilder.append(whereInfo.wherePrefix());
         
         for (int i = 0; i < appliedFilters.size(); i++) {
             if (i > 0) {
@@ -217,31 +218,6 @@ public class DynamicQueryExecutor {
         log.trace("Built dynamic SQL: {}", finalSql);
         
         return finalSql;
-    }
-    
-    /**
-     * Determina si usar WHERE o AND basado en la consulta existente
-     */
-    private String determineWhereClause(String sql) {
-        String upperSql = sql.toUpperCase();
-        
-        boolean hasWhere = false;
-        int parenLevel = 0;
-        String[] tokens = upperSql.split("\\s+");
-        
-        for (String token : tokens) {
-            for (char c : token.toCharArray()) {
-                if (c == '(') parenLevel++;
-                else if (c == ')') parenLevel--;
-            }
-            
-            if (parenLevel == 0 && "WHERE".equals(token)) {
-                hasWhere = true;
-                break;
-            }
-        }
-        
-        return hasWhere ? " AND " : " WHERE ";
     }
     
     /**

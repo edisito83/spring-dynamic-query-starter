@@ -22,6 +22,8 @@ import com.latam.springdynamicquery.autoconfigure.DynamicQueryProperties;
 import com.latam.springdynamicquery.core.model.SqlMapperYaml;
 import com.latam.springdynamicquery.exception.InvalidQueryException;
 import com.latam.springdynamicquery.exception.QueryNotFoundException;
+import com.latam.springdynamicquery.util.ResourceUtils;
+import com.latam.springdynamicquery.util.SqlUtils;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -74,7 +76,7 @@ public class SqlQueryLoader implements InitializingBean {
 			log.debug("Scanning pattern: {} found {} resources", locationPattern, resources.length);
 
 			for (Resource resource : resources) {
-				if (resource.isReadable() && isYamlFile(resource)) {
+				if (resource.isReadable() && ResourceUtils.isYamlFile(resource)) {
 					int queriesInFile = loadQueriesFromYamlResource(resource);
 					totalQueries += queriesInFile;
 					loadedFiles++;
@@ -106,7 +108,7 @@ public class SqlQueryLoader implements InitializingBean {
 
 			// Si no hay namespace, usar el nombre del archivo sin extensión
 			if (!sqlMapper.hasNamespace()) {
-				sqlMapper.setNamespace(extractNamespaceFromResource(resource));
+				sqlMapper.setNamespace(ResourceUtils.getYamlBaseName(resource));
 			}
 
 			int queriesLoaded = 0;
@@ -114,7 +116,7 @@ public class SqlQueryLoader implements InitializingBean {
 				if (isValidQueryDefinition(query, resource.getFilename())) {
 					String fullQueryKey = sqlMapper.getQueryKey(query.getId());
 					String shortQueryKey = extractShortNamespace(fullQueryKey);
-					String cleanSql = cleanSql(query.getSql());
+					String cleanSql = SqlUtils.cleanSql(query.getSql());
 					
 					log.debug("Loading query - Full key: {}, Short key: {}", fullQueryKey, shortQueryKey);
 
@@ -314,19 +316,6 @@ public class SqlQueryLoader implements InitializingBean {
 		return mapper;
 	}
 
-	private boolean isYamlFile(Resource resource) {
-		String filename = resource.getFilename();
-		return filename != null && (filename.endsWith(".yml") || filename.endsWith(".yaml"));
-	}
-
-	private String extractNamespaceFromResource(Resource resource) {
-		String filename = resource.getFilename();
-		if (filename != null && (filename.endsWith(".yml") || filename.endsWith(".yaml"))) {
-			return filename.substring(0, filename.lastIndexOf("."));
-		}
-		return filename != null ? filename : "unknown";
-	}
-
 	private boolean isValidQueryDefinition(SqlMapperYaml.QueryDefinition query, String filename) {
 		if (query.getId() == null || query.getId().trim().isEmpty()) {
 			log.warn("Skipping query with missing ID in file: {}", filename);
@@ -339,15 +328,6 @@ public class SqlQueryLoader implements InitializingBean {
 		}
 
 		return true;
-	}
-
-	private String cleanSql(String sql) {
-		if (sql == null)
-			return "";
-
-		return sql.trim().replaceAll("\\s+", " ")
-				.replaceAll("\\s*\\n\\s*", " ")
-				.trim();
 	}
 
 	private String findQueryWithoutFullNamespace(String queryKey) {
@@ -450,27 +430,11 @@ public class SqlQueryLoader implements InitializingBean {
 		}
 
 		if (properties.getValidation().isValidateSqlSyntax()) {
-			validateBasicSqlSyntax(queryKey, query.getSql());
+			SqlUtils.validateYamlQuerySyntax(queryKey, query.getSql());
 		}
 
 		if (properties.getValidation().isValidateRequiredParameters() && query.hasParameters()) {
 			validateRequiredParameters(queryKey, query);
-		}
-	}
-
-	private void validateBasicSqlSyntax(String queryKey, String sql) {
-		String upperSql = sql.toUpperCase().trim();
-
-		if (!upperSql.startsWith("SELECT") && !upperSql.startsWith("WITH") && !upperSql.startsWith("INSERT")
-				&& !upperSql.startsWith("UPDATE") && !upperSql.startsWith("DELETE")) {
-			throw new InvalidQueryException(queryKey, "SQL must start with SELECT, INSERT, UPDATE, DELETE, or WITH");
-		}
-
-		long openParens = sql.chars().filter(ch -> ch == '(').count();
-		long closeParens = sql.chars().filter(ch -> ch == ')').count();
-
-		if (openParens != closeParens) {
-			throw new InvalidQueryException(queryKey, "Unbalanced parentheses in SQL");
 		}
 	}
 
@@ -506,7 +470,7 @@ public class SqlQueryLoader implements InitializingBean {
 				return sqlMapper.getQueries().stream()
 					.filter(q -> queryKey.endsWith("." + q.getId()))
 					.findFirst()
-					.map(q -> cleanSql(q.getSql()))
+					.map(q -> SqlUtils.cleanSql(q.getSql()))
 					.orElseThrow(() -> new QueryNotFoundException(queryKey));
 			}
 		} catch (IOException e) {

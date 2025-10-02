@@ -25,23 +25,25 @@ public final class ResourceUtils {
         }
     }
     
-    /**
-     * Extrae el nombre base de un recurso (sin extensión).
-     */
-    public static String getBaseName(Resource resource) {
+    public static String getYamlBaseName(Resource resource) {
         String filename = resource.getFilename();
+        
         if (!StringUtils.hasText(filename)) {
             return "unknown";
         }
         
-        int dotIndex = filename.lastIndexOf('.');
-        return dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
+        if (filename.endsWith(".yml") || filename.endsWith(".yaml")) {
+            int dotIndex = filename.lastIndexOf('.');
+            return filename.substring(0, dotIndex);
+        }
+        
+        return filename;
     }
     
     /**
      * Verifica si un recurso es un archivo YAML.
      */
-    public static boolean isYamlResource(Resource resource) {
+    public static boolean isYamlFile(Resource resource) {
         String filename = resource.getFilename();
         return StringUtils.hasText(filename) && 
                (filename.endsWith(".yml") || filename.endsWith(".yaml"));

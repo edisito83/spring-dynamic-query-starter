@@ -1,16 +1,20 @@
 package com.latam.springdynamicquery.core.criteria;
 
-import com.latam.springdynamicquery.core.validation.ValidationUtils;
-import lombok.Getter;
-
 import java.util.Collection;
 import java.util.function.Supplier;
+
+import com.latam.springdynamicquery.core.validation.ValidationUtils;
+import com.latam.springdynamicquery.util.SqlUtils;
+
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Representa un criterio de filtrado dinámico para consultas SQL. Permite
  * construir condiciones WHERE dinámicamente basadas en la presencia y validez
  * de valores.
  */
+@Slf4j
 @Getter
 public class FilterCriteria {
 
@@ -18,9 +22,45 @@ public class FilterCriteria {
 	private final Object value;
 	private final String connector;
 	private final Supplier<Boolean> condition;
+	private final boolean securityValidated;
+	
+	/**
+     * Realiza validación de seguridad del fragmento SQL.
+     */
+    private void performSecurityValidation(String sqlFragment, Object value) {
+        try {
+            SqlUtils.validateFilterCriteriaSafety(sqlFragment, value);
+        } catch (Exception e) {
+            log.error("Security validation failed for FilterCriteria: {}", e.getMessage());
+            throw e;
+        }
+    }
+	
+	/**
+     * Constructor principal para FilterCriteria.
+     * 
+     * @param sqlFragment El fragmento SQL a agregar si la condición se cumple
+     * @param value       El valor del parámetro
+     * @param connector   El conector SQL (AND, OR)
+     * @param condition   La condición que determina si aplicar este criterio
+     * @param validateSecurity Si true, valida el fragmento contra SQL injection
+     */
+    private FilterCriteria(String sqlFragment, Object value, String connector, 
+                          Supplier<Boolean> condition, boolean validateSecurity) {
+        this.sqlFragment = sqlFragment;
+        this.value = value;
+        this.connector = connector != null ? connector : "AND";
+        this.condition = condition != null ? condition : () -> ValidationUtils.isValidValue(value);
+        this.securityValidated = validateSecurity;
+        
+        // Validación de seguridad
+        if (validateSecurity) {
+            performSecurityValidation(sqlFragment, value);
+        }
+    }
 
 	/**
-	 * Constructor principal para FilterCriteria.
+	 * Constructor principal con validación de seguridad habilitada por defecto.
 	 * 
 	 * @param sqlFragment El fragmento SQL a agregar si la condición se cumple
 	 * @param value       El valor del parámetro
@@ -28,24 +68,21 @@ public class FilterCriteria {
 	 * @param condition   La condición que determina si aplicar este criterio
 	 */
 	public FilterCriteria(String sqlFragment, Object value, String connector, Supplier<Boolean> condition) {
-		this.sqlFragment = sqlFragment;
-		this.value = value;
-		this.connector = connector != null ? connector : "AND";
-		this.condition = condition != null ? condition : () -> ValidationUtils.isValidValue(value);
+		this(sqlFragment, value, connector, condition, true);
 	}
 
 	/**
 	 * Constructor simplificado con conector especificado.
 	 */
 	public FilterCriteria(String sqlFragment, Object value, String connector) {
-		this(sqlFragment, value, connector, null);
+		this(sqlFragment, value, connector, null, true);
 	}
 
 	/**
 	 * Constructor más simple con conector AND por defecto.
 	 */
 	public FilterCriteria(String sqlFragment, Object value) {
-		this(sqlFragment, value, "AND", null);
+		this(sqlFragment, value, "AND", null, true);
 	}
 
 	// ==================== Factory Methods ====================
@@ -134,6 +171,32 @@ public class FilterCriteria {
 			Supplier<Boolean> condition) {
 		return new FilterCriteria(sqlFragment, value, connector, condition);
 	}
+	
+	/**
+     * Crea un criterio sin validación de seguridad (USAR CON PRECAUCIÓN).
+     * Solo para casos donde el fragmento SQL es totalmente controlado y confiable.
+     * 
+     * @deprecated Usar solo en casos excepcionales donde la validación de seguridad
+     *             interfiere con lógica SQL compleja y válida.
+     */
+    @Deprecated
+    public static FilterCriteria unsafe(String sqlFragment, Object value) {
+        log.warn("Creating UNSAFE FilterCriteria without security validation. " +
+                "Fragment: '{}'. Ensure this SQL is trusted and sanitized.", sqlFragment);
+        return new FilterCriteria(sqlFragment, value, "AND", null, false);
+    }
+
+    /**
+     * Crea un criterio sin validación de seguridad con conector especificado.
+     * 
+     * @deprecated Usar solo en casos excepcionales.
+     */
+    @Deprecated
+    public static FilterCriteria unsafe(String sqlFragment, Object value, String connector) {
+        log.warn("Creating UNSAFE FilterCriteria without security validation. " +
+                "Fragment: '{}'. Ensure this SQL is trusted and sanitized.", sqlFragment);
+        return new FilterCriteria(sqlFragment, value, connector, null, false);
+    }
 
 	// ==================== Métodos principales ====================
 

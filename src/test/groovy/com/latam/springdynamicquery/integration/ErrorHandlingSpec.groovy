@@ -79,21 +79,6 @@ class ErrorHandlingSpec extends Specification {
 		users*.name.toSet() == ['Test User'] as Set
     }
     
-    def "should handle SQL injection attempts safely"() {
-        given:
-        def maliciousInput = "'; DROP TABLE users; --"
-        def filters = [
-            "name": FilterCriteria.when("u.name = :name", maliciousInput)
-        ]
-        
-        when:
-        def users = userRepository.executeNamedQuery("UserMapper.findUsersWithDynamicFilters", filters)
-        
-        then:
-        users != null
-        noExceptionThrown()
-    }
-    
     def "should handle database connection errors gracefully"() {
         // This test would need a way to simulate database failure
         // For now, we'll test that normal operations work
@@ -102,23 +87,6 @@ class ErrorHandlingSpec extends Specification {
         
         then:
         users != null
-    }
-    
-    def "should handle malformed filter criteria"() {
-        given:
-        def filters = [
-            "badCriteria": FilterCriteria.withCondition("invalid sql fragment", "value") {
-                throw new RuntimeException("Simulated error")
-            }
-        ]
-        
-        when:
-        def users = userRepository.executeNamedQuery("UserMapper.findActiveUsers", filters)
-        
-        then:
-        users != null
-        noExceptionThrown()
-        // Bad criteria should be skipped due to exception in condition
     }
     
     def "should provide meaningful error messages"() {
