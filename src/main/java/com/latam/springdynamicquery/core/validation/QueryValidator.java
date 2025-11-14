@@ -69,7 +69,14 @@ public final class QueryValidator {
             throw new InvalidQueryException(queryKey, "SQL must not be empty or null");
         }
         
-        String trimmed = sql.trim().toUpperCase();
+        // Limpiar comentarios antes de validar
+        String cleaned = SqlUtils.cleanSql(sql);
+        
+        if (!StringUtils.hasText(cleaned)) {
+            throw new InvalidQueryException(queryKey, "SQL must not be empty after removing comments");
+        }
+        
+        String trimmed = cleaned.trim().toUpperCase();
         
         // Validar palabra clave inicial
         if (!trimmed.matches(SQL_KEYWORDS_REGEX)) {
@@ -157,33 +164,6 @@ public final class QueryValidator {
         }
     }
     
-//    /**
-//     * Valida que una query que requiere resultType lo tenga especificado.
-//     * 
-//     * @param queryKey Identificador de la query
-//     * @param sqlType Tipo de query SQL
-//     * @param resultType Tipo de resultado especificado
-//     * @throws InvalidQueryException si falta resultType en SELECT
-//     */
-//    public static void validateResultType(String queryKey, SqlUtils.SqlType sqlType, String resultType) {
-//        // Solo SELECT y queries que retornan datos necesitan resultType
-//        if ((sqlType == SqlUtils.SqlType.SELECT || sqlType == SqlUtils.SqlType.UNKNOWN) 
-//            && !StringUtils.hasText(resultType)) {
-//            throw new InvalidQueryException(queryKey,
-//                "SELECT queries must specify 'resultType' or 'resultClass'. " +
-//                "Example: resultType: com.company.dto.UserDTO");
-//        }
-//        
-//        // INSERT, UPDATE, DELETE no deberían tener resultType
-//        if ((sqlType == SqlUtils.SqlType.INSERT || 
-//             sqlType == SqlUtils.SqlType.UPDATE || 
-//             sqlType == SqlUtils.SqlType.DELETE) 
-//            && StringUtils.hasText(resultType)) {
-//            // Solo warning, no error
-//            // Algunas DBs permiten RETURNING clause
-//        }
-//    }
-    
     /**
      * Valida que una query que requiere resultType lo tenga especificado.
      * 
@@ -193,7 +173,7 @@ public final class QueryValidator {
      */
     public static void validateResultType(String queryKey, SqlMapperYaml.QueryDefinition queryDef) {
         if (queryDef == null) {
-        	throw new InvalidQueryException(queryKey,
+            throw new InvalidQueryException(queryKey,
                     "Query definition not found in YAML.");
         }
         
@@ -218,5 +198,4 @@ public final class QueryValidator {
             }
         }
     }
-    
 }

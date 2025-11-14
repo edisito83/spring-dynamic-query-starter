@@ -2,17 +2,21 @@ package com.latam.springdynamicquery.core.security;
 
 import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.exception.InvalidQueryException
-import com.latam.springdynamicquery.util.SqlUtils
 
 import spock.lang.Specification
 import spock.lang.Unroll
 
 /**
- * Tests de seguridad para prevención de SQL Injection
+ * Tests de integración para seguridad y prevención de SQL Injection.
+ * Enfocado en casos de uso completos con FilterCriteria.
+ * 
+ * Para tests unitarios específicos ver:
+ * - SqlUtilsSpec: Utilidades de procesamiento SQL (extractParameterNames, cleanSql, etc.)
+ * - QueryValidatorSpec: Validaciones de seguridad (validateFilterCriteriaSafety, etc.)
  */
 class SqlInjectionSecuritySpec extends Specification {
 
-    // ==================== Tests de FilterCriteria con Parámetros Seguros ====================
+    // ==================== Tests de Escenarios Completos de Seguridad ====================
     
     def "should safely handle malicious input with proper parameterization"() {
         given: "un input malicioso"
@@ -38,10 +42,11 @@ class SqlInjectionSecuritySpec extends Specification {
         then: "el valor se trata como string literal"
         filter != null
         filter.value == maliciousInput
+        filter.securityValidated
         // En la BD buscará literal "admin' OR '1'='1", no ejecutará la inyección
     }
 
-    // ==================== Tests que DEBEN FALLAR (SQL Injection) ====================
+    // ==================== Tests de Rechazo de Patrones Inseguros ====================
     
     def "should reject FilterCriteria with hardcoded string value"() {
         given: "un fragmento SQL con valor hardcodeado (INSEGURO)"
@@ -107,6 +112,7 @@ class SqlInjectionSecuritySpec extends Specification {
         then: "debe permitirlo porque no hay valor a inyectar"
         filter != null
         filter.value == null
+        filter.securityValidated
     }
     
     def "should allow FilterCriteria with multiple parameters"() {
@@ -118,6 +124,7 @@ class SqlInjectionSecuritySpec extends Specification {
         
         then: "debe ser válido"
         filter != null
+        filter.securityValidated
         filter.sqlFragment.contains(":minAge")
         filter.sqlFragment.contains(":maxAge")
     }
@@ -131,10 +138,11 @@ class SqlInjectionSecuritySpec extends Specification {
         
         then: "debe ser válido"
         filter != null
+        filter.securityValidated
         filter.value == ids
     }
 
-    // ==================== Tests del método unsafe() ====================
+    // ==================== Tests del Modo Unsafe ====================
     
     def "should allow unsafe FilterCriteria with warning"() {
         when: "usando el método unsafe() explícitamente"
@@ -158,40 +166,54 @@ class SqlInjectionSecuritySpec extends Specification {
         filter.securityValidated == false
     }
 
-    // ==================== Tests de SqlUtils ====================
+    // ==================== Tests de Integración Completos ====================
     
-    def "SqlUtils should validate filter safety"() {
-        when: "validando fragmento seguro"
-        SqlUtils.validateFilterCriteriaSafety("u.name = :name", "value")
+    def "integration: complete workflow with safe FilterCriteria"() {
+        given: "múltiples filtros seguros para una query compleja"
+        def maliciousName = "'; DROP TABLE users; --"
+        def maliciousEmail = "admin' OR '1'='1"
         
-        then: "no debe lanzar excepción"
-        noExceptionThrown()
+        when: "creando filtros seguros con parámetros"
+        def filters = [
+            name: FilterCriteria.when("u.name = :name", maliciousName),
+            email: FilterCriteria.when("u.email = :email", maliciousEmail),
+            age: FilterCriteria.whenNumericPositive("u.age >= :age", 18),
+            status: FilterCriteria.when("u.status IN (:status)", ["ACTIVE", "PENDING"])
+        ]
+        
+        then: "todos los filtros se crean correctamente"
+        filters.size() == 4
+        filters.every { key, value -> value.securityValidated }
+        
+        and: "los valores maliciosos están parametrizados de forma segura"
+        filters.name.value == maliciousName
+        filters.email.value == maliciousEmail
     }
     
-    def "SqlUtils should reject unsafe filter"() {
-        when: "validando fragmento inseguro"
-        SqlUtils.validateFilterCriteriaSafety("u.name = 'hardcoded'", "value")
+    def "integration: complex search with OR and EXISTS safely"() {
+        given: "query compleja con OR y EXISTS usando parámetros"
+        def searchTerm = "admin' OR '1'='1"
         
-        then: "debe lanzar excepción"
-        thrown(InvalidQueryException)
-    }
-    
-    @Unroll
-    def "SqlUtils should extract parameters correctly: #description"() {
-        expect:
-        SqlUtils.extractParameterNames(sql) == expectedParams as Set
+        when: "construyendo filtros complejos de forma segura"
+        def filters = [
+            search: FilterCriteria.when(
+                "(u.name LIKE :search OR u.email LIKE :search)",
+                "%${searchTerm}%"
+            ),
+            hasOrders: FilterCriteria.when(
+                "EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.status = :orderStatus)",
+                "COMPLETED"
+            )
+        ]
         
-        where:
-        description          | sql                                     | expectedParams
-        "single param"       | "u.id = :userId"                        | ["userId"]
-        "multiple params"    | ":name AND :age"                        | ["name", "age"]
-        "IN clause"          | "u.id IN (:ids)"                        | ["ids"]
-        "no params"          | "u.active = 1"                          | []
-        "repeated param"     | ":id OR :id"                            | ["id"]
-        "mixed"              | "(:name, :age, :name)"                  | ["name", "age"]
+        then: "filtros se crean correctamente"
+        filters.size() == 2
+        filters.search.securityValidated
+        filters.hasOrders.securityValidated
+        
+        and: "el término de búsqueda malicioso está parametrizado"
+        filters.search.value.contains(searchTerm)
     }
-
-    // ==================== Tests de Integración con Repository ====================
     
     def "integration: should prevent SQL injection in repository execution"() {
         given: "un repository y un intento de inyección"
@@ -201,7 +223,7 @@ class SqlInjectionSecuritySpec extends Specification {
         def filters = [
             name: FilterCriteria.when("u.name = :name", maliciousInput)
         ]
-        // userRepository.executeNamedQuery("UserMapper.findUsers", filters)
+        // En ejecución real: userRepository.executeNamedQuery("UserMapper.findUsers", filters)
         
         then: "el filtro se crea correctamente"
         filters.name.securityValidated == true
@@ -220,8 +242,97 @@ class SqlInjectionSecuritySpec extends Specification {
         thrown(InvalidQueryException)
         // Nunca llega al repository, se detiene antes
     }
+    
+    def "integration: combining multiple filter types safely"() {
+        when: "combinando diferentes tipos de filtros"
+        def filter1 = FilterCriteria.when("u.name = :name", "test")
+        def filter2 = FilterCriteria.whenNotEmpty("u.email = :email", "test@example.com")
+        def filter3 = FilterCriteria.whenNumericPositive("u.age >= :age", 25)
+        def filter4 = FilterCriteria.whenNotNull("u.department_id = :deptId", 5L)
+        def combined = filter1.and(filter2)
+        
+        then: "todos los filtros están validados"
+        filter1.securityValidated
+        filter2.securityValidated
+        filter3.securityValidated
+        filter4.securityValidated
+        combined.securityValidated
+    }
+    
+    def "integration: should prevent multiple attack vectors simultaneously"() {
+        given: "múltiples vectores de ataque diferentes"
+        def attacks = [
+            dropTable: "'; DROP TABLE users; --",
+            union: "' UNION SELECT * FROM passwords --",
+            or11: "' OR '1'='1",
+            comment: "admin' --",
+            delete: "'; DELETE FROM users WHERE '1'='1"
+        ]
+        
+        when: "intentando crear filtros con cada ataque"
+        def results = attacks.collectEntries { key, attack ->
+            try {
+                def filter = FilterCriteria.when("u.field = :param", attack)
+                [(key): "SAFE - ${filter.securityValidated}"]
+            } catch (InvalidQueryException e) {
+                [(key): "BLOCKED - ${e.message.contains('injection')}"]
+            }
+        }
+        
+        then: "todos los ataques están bloqueados o parametrizados de forma segura"
+        results.every { key, value -> 
+            value.startsWith("SAFE - true") || value.startsWith("BLOCKED - true")
+        }
+    }
+    
+    def "integration: real-world scenario with user input"() {
+        given: "simulando input de usuario en un formulario de búsqueda"
+        def userInputName = "O'Brien" // Nombre legítimo con apóstrofe
+        def userInputEmail = "user@company.com"
+        def userInputStatus = ["ACTIVE", "PENDING"]
+        def maliciousInput = "'; DELETE FROM users; --"
+        
+        when: "creando filtros con input mixto (legítimo y malicioso)"
+        def filters = [
+            name: FilterCriteria.whenNotEmpty("u.name LIKE :name", "%${userInputName}%"),
+            email: FilterCriteria.whenNotEmpty("u.email = :email", userInputEmail),
+            status: FilterCriteria.whenNotEmptyCollection("u.status IN (:status)", userInputStatus),
+            notes: FilterCriteria.whenNotEmpty("u.notes LIKE :notes", "%${maliciousInput}%")
+        ]
+        
+        then: "todos los filtros son seguros"
+        filters.every { key, value -> value.securityValidated }
+        
+        and: "el input legítimo con apóstrofe está manejado correctamente"
+        filters.name.value.contains("O'Brien")
+        
+        and: "el input malicioso está parametrizado de forma segura"
+        filters.notes.value.contains(maliciousInput)
+    }
+    
+    def "integration: unsafe mode for legitimate complex SQL"() {
+        given: "SQL complejo pero confiable que podría fallar validación estándar"
+        def trustedComplexSql = """
+            EXISTS (
+                SELECT 1 FROM orders o
+                WHERE o.user_id = u.id
+                AND o.status = 'COMPLETED'
+                AND o.total > 1000
+                AND o.created_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            )
+        """
+        
+        when: "usando modo unsafe para SQL confiable"
+        def filter = FilterCriteria.unsafe(trustedComplexSql, null)
+        
+        then: "el filtro se crea pero está marcado como no validado"
+        filter != null
+        !filter.securityValidated
+        filter.sqlFragment.contains("EXISTS")
+        filter.sqlFragment.contains("DATE_SUB")
+    }
 
-    // ==================== Tests de Edge Cases ====================
+    // ==================== Tests de Edge Cases de Integración ====================
     
     def "should handle empty sql fragment gracefully"() {
         when:
@@ -247,6 +358,7 @@ class SqlInjectionSecuritySpec extends Specification {
         
         then: "debe ser válido"
         filter != null
+        filter.securityValidated
         filter.value == "%admin%"
         // JPA escapará correctamente incluso los caracteres especiales
     }
@@ -260,7 +372,7 @@ class SqlInjectionSecuritySpec extends Specification {
         
         then: "debe ser válido porque usa parámetros"
         filter != null
-        SqlUtils.extractParameterNames(filter.sqlFragment).size() == 3
+        filter.securityValidated
     }
     
     def "should handle case-insensitive SQL keywords"() {
@@ -271,15 +383,14 @@ class SqlInjectionSecuritySpec extends Specification {
         filter != null
         filter.securityValidated == true
     }
-	
-	def "should handle malformed filter criteria"() {
-		when:
-		def filters = FilterCriteria.withCondition("invalid sql fragment", "value", null)
-		
-		then:
-		def ex = thrown(InvalidQueryException)
-		ex.message.contains("must use named parameters")
-		ex.message.contains("when a value is provided")
-	}
-	
+    
+    def "should handle malformed filter criteria"() {
+        when:
+        def filters = FilterCriteria.withCondition("invalid sql fragment", "value", null)
+        
+        then:
+        def ex = thrown(InvalidQueryException)
+        ex.message.contains("must use named parameters")
+        ex.message.contains("when a value is provided")
+    }
 }
