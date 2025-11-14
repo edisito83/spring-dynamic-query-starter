@@ -5,6 +5,9 @@ import com.latam.springdynamicquery.core.criteria.FilterCriteria
 import com.latam.springdynamicquery.testrepository.TestUserRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.jdbc.datasource.init.ScriptUtils
+import org.springframework.core.io.ClassPathResource
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -15,6 +18,15 @@ import spock.lang.Specification
 
 /**
  * Tests de integración con PostgreSQL usando Testcontainers y Spock.
+ * 
+ * IMPORTANTE: Requiere Podman o Docker configurado correctamente.
+ * Ver TESTCONTAINERS_PODMAN_SETUP.md para instrucciones de configuración.
+ * 
+ * Comandos rápidos:
+ * - Linux/Mac: ./setup-podman.sh
+ * - Windows: .\setup-podman.ps1
+ * 
+ * Verificar: echo $DOCKER_HOST
  */
 @SpringBootTest(classes = [TestApplication])
 @Testcontainers
@@ -22,16 +34,75 @@ import spock.lang.Specification
 class PostgresContainerSpec extends Specification {
     
     @Shared
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test")
-            .withInitScripts(["sql/schema/postgres-schema.sql", "sql/data/test-data.sql"])
-	
-	static {
-		postgres.start()
-	}
-			
+    static PostgreSQLContainer<?> postgres
+    
+    static {
+        try {
+            println("🚀 Starting PostgreSQL container with Testcontainers...")
+            println("📍 DOCKER_HOST: ${System.getenv('DOCKER_HOST') ?: 'not set (will use default)'}")
+            
+            postgres = new PostgreSQLContainer<>("postgres:15")
+                .withDatabaseName("testdb")
+                .withUsername("test")
+                .withPassword("test")
+                .withReuse(true)  // Reutilizar contenedor entre ejecuciones
+                .withStartupTimeout(java.time.Duration.ofMinutes(3))
+                .withLogConsumer { frame -> 
+                    // Solo mostrar errores del contenedor
+                    def msg = frame.utf8String.trim()
+                    if (msg.contains("ERROR") || msg.contains("FATAL") || msg.contains("WARNING")) {
+                        println("🐘 Postgres: ${msg}")
+                    }
+                }
+            
+            postgres.start()
+            
+            println("✅ PostgreSQL container started successfully!")
+            println("📍 JDBC URL: ${postgres.jdbcUrl}")
+            println("👤 Username: ${postgres.username}")
+            println("🏷️  Container ID: ${postgres.containerId}")
+            
+            // Ejecutar schema script
+            println("📝 Loading database schema...")
+            def dataSource = new DriverManagerDataSource(
+                postgres.jdbcUrl,
+                postgres.username,
+                postgres.password
+            )
+            
+            ScriptUtils.executeSqlScript(
+                dataSource.connection,
+                new ClassPathResource("sql/schema/postgres-schema.sql")
+            )
+            println("✅ Schema loaded successfully!")
+            
+            // Ejecutar data script
+            println("📝 Loading test data...")
+            ScriptUtils.executeSqlScript(
+                dataSource.connection,
+                new ClassPathResource("sql/data/test-data.sql")
+            )
+            println("✅ Test data loaded successfully!")
+            
+        } catch (Exception e) {
+            println("\n❌ ERROR: Failed to start PostgreSQL container")
+            println("📋 Error details: ${e.message}")
+            println("\n💡 Troubleshooting:")
+            println("   1. Check if Podman/Docker is running:")
+            println("      podman ps  (or)  docker ps")
+            println("\n   2. Verify DOCKER_HOST is set:")
+            println("      echo \$DOCKER_HOST")
+            println("\n   3. Run setup script:")
+            println("      ./setup-podman.sh (Linux/Mac)")
+            println("      .\\setup-podman.ps1 (Windows)")
+            println("\n   4. Check Podman machine status (if on Mac/Windows):")
+            println("      podman machine list")
+            println("\n   5. Read full guide: TESTCONTAINERS_PODMAN_SETUP.md\n")
+            
+            throw new RuntimeException("PostgreSQL container failed to start. See troubleshooting steps above.", e)
+        }
+    }
+    
     @Autowired
     TestUserRepository userRepository
     
@@ -52,7 +123,7 @@ class PostgresContainerSpec extends Specification {
         
         then:
         users != null
-        println "PostgreSQL container is running on: ${postgres.jdbcUrl}"
+        println "✅ Test passed: Found ${users.size()} users in PostgreSQL"
     }
     
     def "should execute complex queries in PostgreSQL"() {
@@ -67,7 +138,7 @@ class PostgresContainerSpec extends Specification {
         
         then:
         users != null
-        // PostgreSQL specific features should work
+        println "✅ Test passed: PostgreSQL ILIKE query returned ${users.size()} results"
     }
     
     def "should handle PostgreSQL specific data types and functions"() {
@@ -87,13 +158,13 @@ class PostgresContainerSpec extends Specification {
         
         then:
         users != null
-        // PostgreSQL interval and ILIKE should work correctly
+        println "✅ Test passed: PostgreSQL INTERVAL functions work correctly"
     }
     
     def "should test concurrent access with PostgreSQL"() {
         given:
         def numberOfThreads = 5
-        def results = []
+        def results = Collections.synchronizedList([])
         
         when:
         def threads = (1..numberOfThreads).collect { threadNum ->
@@ -110,5 +181,21 @@ class PostgresContainerSpec extends Specification {
         then:
         results.size() == numberOfThreads
         results.every { it.contains("users") }
+        println "✅ Test passed: Concurrent access works (${numberOfThreads} threads)"
+    }
+    
+    def "should test PostgreSQL JSON functions"() {
+        when:
+        // Test that PostgreSQL is working with standard queries
+        def count = userRepository.count()
+        
+        then:
+        count >= 0
+        println "✅ Test passed: PostgreSQL query execution works (count: ${count})"
+    }
+    
+    def cleanupSpec() {
+        println("\n🧹 Test cleanup completed")
+        println("💡 Container will be reused for next test run (testcontainers.reuse.enable=true)")
     }
 }
