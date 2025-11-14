@@ -3,8 +3,8 @@ package com.latam.springdynamicquery.core.criteria;
 import java.util.Collection;
 import java.util.function.Supplier;
 
-import com.latam.springdynamicquery.core.validation.ValidationUtils;
-import com.latam.springdynamicquery.util.SqlUtils;
+import com.latam.springdynamicquery.core.validation.ParameterValidator;
+import com.latam.springdynamicquery.core.validation.QueryValidator;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ public class FilterCriteria {
      */
     private void performSecurityValidation(String sqlFragment, Object value) {
         try {
-            SqlUtils.validateFilterCriteriaSafety(sqlFragment, value);
+        	QueryValidator.validateFilterCriteriaSafety(sqlFragment, value);
         } catch (Exception e) {
             log.error("Security validation failed for FilterCriteria: {}", e.getMessage());
             throw e;
@@ -50,7 +50,7 @@ public class FilterCriteria {
         this.sqlFragment = sqlFragment;
         this.value = value;
         this.connector = connector != null ? connector : "AND";
-        this.condition = condition != null ? condition : () -> ValidationUtils.isValidValue(value);
+        this.condition = condition != null ? condition : () -> ParameterValidator.isValidValue(value);
         this.securityValidated = validateSecurity;
         
         // Validación de seguridad
@@ -110,23 +110,46 @@ public class FilterCriteria {
 	}
 
 	/**
-	 * Crea un criterio que se aplica cuando el valor no está vacío. Funciona con
-	 * strings y colecciones.
-	 */
-	public static FilterCriteria whenNotEmpty(String sqlFragment, Object value) {
-		return new FilterCriteria(sqlFragment, value, "AND", () -> switch (value) {
-		case null -> false;
-		case String s -> !s.trim().isEmpty();
-		case Collection<?> c -> !c.isEmpty();
-		default -> true;
-		});
-	}
+     * Crea un criterio que se aplica cuando el valor no está vacío.
+     * Funciona con strings, colecciones y arrays.
+     * Detecta strings con "null" literal y espacios en blanco.
+     */
+    public static FilterCriteria whenNotEmpty(String sqlFragment, Object value) {
+        return new FilterCriteria(sqlFragment, value, "AND", 
+            () -> ParameterValidator.isValidValue(value));
+    }
+    
+    /**
+     * Crea un criterio que se aplica cuando el string es válido.
+     * Rechaza null, vacío, espacios en blanco, y "null" literal.
+     */
+    public static FilterCriteria whenValidString(String sqlFragment, String value) {
+        return new FilterCriteria(sqlFragment, value, "AND", 
+            () -> ParameterValidator.isValidString(value));
+    }
+    
+    /**
+     * Crea un criterio que se aplica cuando la colección no está vacía.
+     */
+    public static FilterCriteria whenNotEmptyCollection(String sqlFragment, Collection<?> value) {
+        return new FilterCriteria(sqlFragment, value, "AND", 
+            () -> ParameterValidator.isValidCollection(value));
+    }
+    
+    /**
+     * Crea un criterio que se aplica cuando el valor es un número válido.
+     * Acepta cero, positivos y negativos. Rechaza NaN e Infinity.
+     */
+    public static FilterCriteria whenNumericValid(String sqlFragment, Object value) {
+        return new FilterCriteria(sqlFragment, value, "AND", 
+            () -> ParameterValidator.isValidNumericValue(value));
+    }
 
 	/**
 	 * Crea un criterio que se aplica cuando el valor es un número positivo.
 	 */
 	public static FilterCriteria whenNumericPositive(String sqlFragment, Object value) {
-		return new FilterCriteria(sqlFragment, value, "AND", () -> ValidationUtils.isValidNumericValue(value));
+		return new FilterCriteria(sqlFragment, value, "AND", () -> ParameterValidator.isPositiveNumber(value));
 	}
 
 	/**
@@ -142,6 +165,23 @@ public class FilterCriteria {
 	public static FilterCriteria whenFalse(String sqlFragment, Boolean value) {
 		return new FilterCriteria(sqlFragment, value, "AND", () -> Boolean.FALSE.equals(value));
 	}
+	
+	/**
+     * Crea un criterio que se aplica cuando el patrón LIKE es válido.
+     * Valida que no sea null, vacío, "%%", o contenga "null" literal.
+     */
+    public static FilterCriteria whenLike(String sqlFragment, String pattern) {
+        return new FilterCriteria(sqlFragment, pattern, "AND", 
+            () -> ParameterValidator.isValidLikePattern(pattern));
+    }
+    
+    /**
+     * Crea un criterio que se aplica cuando el email es válido.
+     */
+    public static FilterCriteria whenValidEmail(String sqlFragment, String email) {
+        return new FilterCriteria(sqlFragment, email, "AND", 
+            () -> ParameterValidator.isValidEmail(email));
+    }
 
 	/**
 	 * Crea un criterio que siempre se aplica.

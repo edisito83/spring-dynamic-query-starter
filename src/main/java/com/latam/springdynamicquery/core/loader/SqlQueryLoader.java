@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.latam.springdynamicquery.autoconfigure.DynamicQueryProperties;
 import com.latam.springdynamicquery.core.model.SqlMapperYaml;
+import com.latam.springdynamicquery.core.validation.QueryValidator;
 import com.latam.springdynamicquery.exception.InvalidQueryException;
 import com.latam.springdynamicquery.exception.QueryNotFoundException;
 import com.latam.springdynamicquery.util.ResourceUtils;
@@ -384,8 +385,12 @@ public class SqlQueryLoader implements InitializingBean {
 	}
 
 	private void logLoadedQueries() {
-		queryCache.forEach((key, sql) -> log.debug("Loaded query: {} -> {}", key,
-				sql.substring(0, Math.min(100, sql.length())) + "..."));
+		queryCache.forEach((key, sql) -> {
+            SqlMapperYaml.QueryDefinition metadata = queryMetadata.get(key);
+            String dynamicFlag = metadata != null ? (metadata.isDynamic() ? "[DYNAMIC]" : "[STATIC]") : "";
+            log.debug("Loaded query: {} {} -> {}", key, dynamicFlag,
+                    sql.substring(0, Math.min(100, sql.length())) + "...");
+        });
 	}
 
 	private void validateAllQueries() {
@@ -429,9 +434,22 @@ public class SqlQueryLoader implements InitializingBean {
 			throw new InvalidQueryException(queryKey, "SQL is empty or null");
 		}
 
-		if (properties.getValidation().isValidateSqlSyntax()) {
-			SqlUtils.validateYamlQuerySyntax(queryKey, query.getSql());
-		}
+		// Validar sintaxis SQL básica
+        if (properties.getValidation().isValidateSqlSyntax()) {
+            QueryValidator.validateYamlQuerySyntax(queryKey, query.getSql());
+        }
+        
+        // Obtener tipo de SQL
+        SqlUtils.SqlType sqlType = SqlUtils.getSqlType(query.getSql());
+        
+        // Validar que DDL no esté permitido en strict mode
+        if (properties.getValidation().isStrictMode() && sqlType == SqlUtils.SqlType.DDL) {
+            throw new InvalidQueryException(queryKey, 
+                "DDL operations are not allowed in query definitions");
+        }
+        
+        // Validar resultType para SELECT queries
+        QueryValidator.validateResultType(queryKey, query);
 
 		if (properties.getValidation().isValidateRequiredParameters() && query.hasParameters()) {
 			validateRequiredParameters(queryKey, query);

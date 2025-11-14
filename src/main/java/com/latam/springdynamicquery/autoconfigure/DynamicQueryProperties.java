@@ -43,11 +43,6 @@ public class DynamicQueryProperties {
     private String encoding = "UTF-8";
     
     /**
-     * Configuración de caché.
-     */
-    private Cache cache = new Cache();
-    
-    /**
      * Configuración de logging.
      */
     private Logging logging = new Logging();
@@ -63,26 +58,8 @@ public class DynamicQueryProperties {
     private Repository repository = new Repository();
     
     @Data
-    public static class Cache {
-        /**
-         * Habilita el caché de consultas parseadas.
-         */
-        private boolean enabled = true;
-        
-        /**
-         * Número máximo de consultas a mantener en caché.
-         */
-        private int size = 1000;
-        
-        /**
-         * Tiempo de vida del caché en minutos.
-         */
-        private long ttlMinutes = 60;
-    }
-    
-    @Data
     public static class Logging {
-        /**
+    	 /**
          * Habilita logging detallado de ejecución de consultas.
          */
         private boolean enabled = false;

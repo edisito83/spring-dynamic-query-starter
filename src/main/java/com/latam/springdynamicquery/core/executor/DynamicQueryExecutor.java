@@ -6,6 +6,9 @@ import java.util.Map;
 import com.latam.springdynamicquery.autoconfigure.DynamicQueryProperties;
 import com.latam.springdynamicquery.core.criteria.FilterCriteria;
 import com.latam.springdynamicquery.core.loader.SqlQueryLoader;
+import com.latam.springdynamicquery.core.model.SqlMapperYaml;
+import com.latam.springdynamicquery.core.validation.QueryValidator;
+import com.latam.springdynamicquery.exception.InvalidQueryException;
 import com.latam.springdynamicquery.util.SqlUtils;
 
 import jakarta.persistence.EntityManager;
@@ -32,17 +35,67 @@ public class DynamicQueryExecutor {
     }
     
     /**
-     * Ejecuta una consulta nombrada con PARÁMETROS FIJOS (sin filtros dinámicos)
-     * Usar cuando la query ya tiene :param definidos y solo necesitas pasar valores
+     * Ejecuta una consulta SELECT nombrada con PARÁMETROS FIJOS (sin filtros dinámicos).
+     * Obtiene el resultClass automáticamente desde la metadata de la query.
+     * Solo para queries SELECT que retornan datos.
+     * 
+     * @param queryName Nombre de la query
+     * @param parameters Parámetros de la query
+     * @return Lista de resultados
+     * @throws InvalidQueryException si la query no es SELECT o no tiene resultType
      */
-    public <T> List<T> executeNamedQueryWithParameters(String queryName, Class<T> resultClass, 
+    public <T> List<T> executeNamedQueryWithParameters(String queryName, 
+                                                       Map<String, Object> parameters) {
+        SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+        
+        if (queryDef == null) {
+            throw new InvalidQueryException(queryName, 
+                "Query metadata not found. Check if query exists in YAML.");
+        }
+        
+        if (!queryDef.requiresResultType()) {
+            throw new InvalidQueryException(queryName,
+                "This method is for SELECT queries. Use executeDML() for INSERT/UPDATE/DELETE.");
+        }
+        
+        try {
+            @SuppressWarnings("unchecked")
+            Class<T> resultClass = (Class<T>) Class.forName(queryDef.getEffectiveResultType());
+            return executeNamedQueryWithParameters(queryName, resultClass, parameters);
+        } catch (ClassNotFoundException e) {
+            throw new InvalidQueryException(queryName, 
+                "ResultType class not found: " + queryDef.getEffectiveResultType(), e);
+        }
+    }
+    
+    /**
+    * Ejecuta una consulta nombrada con PARÁMETROS FIJOS (sin filtros dinámicos).
+    * Usar cuando la query ya tiene :param definidos y solo necesitas pasar valores.
+    * Ideal para queries estáticas (dynamic: false).
+    */
+    @SuppressWarnings("unchecked")
+	public <T> List<T> executeNamedQueryWithParameters(String queryName, Class<T> resultClass, 
                                                        Map<String, Object> parameters) {
         long startTime = System.currentTimeMillis();
         
         try {
             String sql = queryLoader.getQuery(queryName);
+            SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
             
-            Query query = entityManager.createNativeQuery(sql, resultClass);
+            // Validar que no sea una query dinamica si se esta usando este metodo
+            if (queryDef != null && queryDef.isDynamic()) {
+                log.debug("Query '{}' is marked as dynamic but being executed with fixed parameters", queryName);
+            }
+            
+            // Si tiene resultMapping, usar createNativeQuery con el mapping
+            Query query;
+            if (queryDef != null && queryDef.hasResultMapping()) {
+                log.debug("Using SqlResultSetMapping '{}' for query '{}'", 
+                    queryDef.getResultMapping(), queryName);
+                query = entityManager.createNativeQuery(sql, queryDef.getResultMapping());
+            } else {
+                query = entityManager.createNativeQuery(sql, resultClass);
+            }
             
             // Establecer parámetros directamente sin construir SQL dinámico
             if (parameters != null) {
@@ -80,13 +133,22 @@ public class DynamicQueryExecutor {
     }
     
     /**
-     * Ejecuta una consulta nombrada con FILTROS DINÁMICOS (condiciones opcionales)
+     * Ejecuta una consulta nombrada con FILTROS DINÁMICOS (condiciones opcionales).
+     * Usar cuando la query es dinámica (dynamic: true).
      */
     public <T> List<T> executeNamedQuery(String queryName, Class<T> resultClass, 
                                         Map<String, FilterCriteria> filters) {
         long startTime = System.currentTimeMillis();
         
         try {
+        	// Validar que la query permita filtros dinámicos
+            SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+            
+            if (queryDef != null) {
+                boolean hasFilters = filters != null && !filters.isEmpty();
+                QueryValidator.validateStaticQueryUsage(queryName, queryDef.isDynamic(), hasFilters);
+            }
+            
             String baseSql = queryLoader.getQuery(queryName);
             return executeQuery(baseSql, resultClass, filters, queryName);
         } finally {
@@ -135,6 +197,13 @@ public class DynamicQueryExecutor {
         long startTime = System.currentTimeMillis();
         
         try {
+        	 // Validar que la query permita filtros dinámicos
+            SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+            if (queryDef != null) {
+                boolean hasFilters = filters != null && !filters.isEmpty();
+                QueryValidator.validateStaticQueryUsage(queryName, queryDef.isDynamic(), hasFilters);
+            }
+            
             String baseSql = queryLoader.getQuery(queryName);
             String finalSql = buildDynamicQuery(baseSql, filters);
             
@@ -164,6 +233,13 @@ public class DynamicQueryExecutor {
         long startTime = System.currentTimeMillis();
         
         try {
+        	// Validar que la query permita filtros dinámicos
+            SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+            if (queryDef != null) {
+                boolean hasFilters = filters != null && !filters.isEmpty();
+                QueryValidator.validateStaticQueryUsage(queryName, queryDef.isDynamic(), hasFilters);
+            }
+            
             String baseSql = queryLoader.getQuery(queryName);
             String finalSql = buildDynamicQuery(baseSql, filters);
             
@@ -184,6 +260,133 @@ public class DynamicQueryExecutor {
             }
         }
     }
+    
+    /**
+    * Ejecuta una query DML (INSERT, UPDATE, DELETE) nombrada.
+    * No retorna datos, solo el número de filas afectadas.
+    * 
+    * @param queryName Nombre de la query DML
+    * @param parameters Parámetros de la query
+    * @return Número de filas afectadas
+    */
+   public int executeDMLWithParameters(String queryName, Map<String, Object> parameters) {
+       long startTime = System.currentTimeMillis();
+       
+       try {
+           String sql = queryLoader.getQuery(queryName);
+           SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+           
+           // CAMBIO: Validar que sea DML
+           if (queryDef != null && queryDef.requiresResultType()) {
+               throw new InvalidQueryException(queryName,
+                   "This method is for DML queries (INSERT/UPDATE/DELETE). Use executeNamedQuery() for SELECT.");
+           }
+           
+           // Validar que no sea una query dinámica
+           if (queryDef != null && queryDef.isDynamic()) {
+               log.debug("Query '{}' is marked as dynamic but being executed with fixed parameters", queryName);
+           }
+           
+           if (properties.getLogging().isEnabled()) {
+               if (properties.getLogging().isLogGeneratedSql()) {
+                   log.debug("Executing DML query '{}': {}", queryName, sql);
+               } else {
+                   log.debug("Executing DML query '{}'", queryName);
+               }
+           }
+           
+           Query query = entityManager.createNativeQuery(sql);
+           
+           // Establecer parámetros
+           if (parameters != null) {
+               for (Map.Entry<String, Object> entry : parameters.entrySet()) {
+                   try {
+                       query.setParameter(entry.getKey(), entry.getValue());
+                       
+                       if (properties.getLogging().isLogParameters()) {
+                           log.debug("Set parameter '{}' = {} for DML query '{}'", 
+                                   entry.getKey(), entry.getValue(), queryName);
+                       }
+                   } catch (IllegalArgumentException e) {
+                       log.warn("Parameter '{}' not found in DML query '{}', skipping", 
+                               entry.getKey(), queryName);
+                   }
+               }
+           }
+           
+           // Ejecutar DML
+           int affectedRows = query.executeUpdate();
+           
+           if (properties.getLogging().isEnabled()) {
+               log.info("DML query '{}' affected {} rows", queryName, affectedRows);
+           }
+           
+           return affectedRows;
+           
+       } finally {
+           if (properties.getLogging().isLogExecutionTime()) {
+               long executionTime = System.currentTimeMillis() - startTime;
+               log.debug("DML query '{}' executed in {} ms", queryName, executionTime);
+           }
+       }
+   }
+   
+   /**
+    * Ejecuta una query DML dinámica (con filtros opcionales en WHERE).
+    * Para casos como UPDATE/DELETE con condiciones dinámicas.
+    * 
+    * @param queryName Nombre de la query DML
+    * @param filters Filtros dinámicos
+    * @return Número de filas afectadas
+    */
+   public int executeDMLWithFilters(String queryName, Map<String, FilterCriteria> filters) {
+       long startTime = System.currentTimeMillis();
+       
+       try {
+           SqlMapperYaml.QueryDefinition queryDef = queryLoader.getQueryMetadata(queryName);
+           
+           // CAMBIO: Validar que sea DML
+           if (queryDef != null && queryDef.requiresResultType()) {
+               throw new InvalidQueryException(queryName,
+                   "This method is for DML queries (INSERT/UPDATE/DELETE). Use executeNamedQuery() for SELECT.");
+           }
+           
+           // Validar que permita filtros dinámicos
+           if (queryDef != null) {
+               boolean hasFilters = filters != null && !filters.isEmpty();
+               QueryValidator.validateStaticQueryUsage(queryName, queryDef.isDynamic(), hasFilters);
+           }
+           
+           String baseSql = queryLoader.getQuery(queryName);
+           String finalSql = buildDynamicQuery(baseSql, filters);
+           
+           if (properties.getLogging().isEnabled()) {
+               if (properties.getLogging().isLogGeneratedSql()) {
+                   log.debug("Executing dynamic DML query '{}': {}", queryName, finalSql);
+               } else {
+                   log.debug("Executing dynamic DML query '{}'", queryName);
+               }
+           }
+           
+           Query query = entityManager.createNativeQuery(finalSql);
+           setParameters(query, filters, queryName);
+           
+           // Ejecutar DML
+           int affectedRows = query.executeUpdate();
+           
+           if (properties.getLogging().isEnabled()) {
+               log.info("Dynamic DML query '{}' affected {} rows", queryName, affectedRows);
+           }
+           
+           return affectedRows;
+           
+       } finally {
+           if (properties.getLogging().isLogExecutionTime()) {
+               long executionTime = System.currentTimeMillis() - startTime;
+               log.debug("Dynamic DML query '{}' executed in {} ms", queryName, executionTime);
+           }
+       }
+   }
     
     /**
      * Construye la consulta dinámica con los filtros

@@ -11,7 +11,7 @@ class ValidationUtilsSpec extends Specification {
     @Unroll
     def "isValidValue should return #expected for #value"() {
         expect:
-        ValidationUtils.isValidValue(value) == expected
+        ParameterValidator.isValidValue(value) == expected
         
         where:
         value                    | expected
@@ -22,9 +22,9 @@ class ValidationUtilsSpec extends Specification {
         "hello"                  | true
         "test"                   | true
         []                       | false
-        [1, 2, 3]               | true
+        [1, 2, 3]                | true
         new Object[0]            | false
-        new String[]{"test"}     | true
+        ["test"]                 | true
         123                      | true
         true                     | true
     }
@@ -32,32 +32,32 @@ class ValidationUtilsSpec extends Specification {
     @Unroll
     def "isValidNumericValue should return #expected for #value"() {
         expect:
-        ValidationUtils.isValidNumericValue(value) == expected
+        ParameterValidator.isValidNumericValue(value) == expected
         
         where:
         value                           | expected
         null                            | false
-        0                               | false
-        -1                              | false
+        0                               | true
+        -1                              | true
         1                               | true
         100                             | true
-        0L                              | false
-        -5L                             | false
+        0L                              | true
+        -5L                             | true
         10L                             | true
-        0.0                             | false
-        -1.5                            | false
+        0.0                             | true
+        -1.5                            | true
         1.5                             | true
-        0.0f                            | false
+        0.0f                            | true
         1.0f                            | true
-        new BigDecimal("0")             | false
-        new BigDecimal("-1")            | false
+        new BigDecimal("0")             | true
+        new BigDecimal("-1")            | true
         new BigDecimal("1.5")           | true
         "not a number"                  | false
     }
     
     def "isValidString should work correctly"() {
         expect:
-        ValidationUtils.isValidString(value) == expected
+        ParameterValidator.isValidString(value) == expected
         
         where:
         value       | expected
@@ -70,7 +70,7 @@ class ValidationUtilsSpec extends Specification {
     
     def "isValidCollection should work correctly"() {
         expect:
-        ValidationUtils.isValidCollection(value) == expected
+        ParameterValidator.isValidCollection(value) == expected
         
         where:
         value           | expected

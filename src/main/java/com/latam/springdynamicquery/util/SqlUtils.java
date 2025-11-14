@@ -1,10 +1,9 @@
 package com.latam.springdynamicquery.util;
 
-import org.springframework.util.StringUtils;
-
-import com.latam.springdynamicquery.exception.InvalidQueryException;
-
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.springframework.util.StringUtils;
 
 /**
  * Utilidades para procesamiento de SQL.
@@ -14,37 +13,6 @@ public final class SqlUtils {
 	private static final Pattern COMMENTS_PATTERN = Pattern.compile("--[^\r\n]*|/\\*(?:(?!\\*/).)*\\*/",
 			Pattern.MULTILINE | Pattern.DOTALL);
 	private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
-	private static final String SQL_KEYWORDS_REGEX = "^(SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|DROP|ALTER)\\s+.*";
-
-	// Patrones para detectar valores hardcodeados peligrosos (solo para
-	// FilterCriteria)
-	private static final Pattern HARDCODED_STRING_PATTERN = Pattern
-			.compile("(WHERE|AND|OR)\\s+\\w+\\.?\\w*\\s*=\\s*'[^:][^']*'", Pattern.CASE_INSENSITIVE);
-
-	// Patrones de SQL injection comunes
-	private static final Pattern SQL_INJECTION_PATTERNS = Pattern.compile(
-	    // ' OR '1'='1 variations
-	    "'\\s*(?:OR|AND)\\s*'?\\d*'?\\s*=\\s*'?\\d*'?" +
-	    "|" +
-	    // ; DROP TABLE / DELETE / etc
-	    ";\\s*(?:DROP|DELETE|UPDATE|INSERT|ALTER)\\s+" +
-	    "|" +
-	    // SQL comment: --
-	    "--" +
-	    "|" +
-	    // Multi-line comment: /* ... */
-	    "/\\*.*?\\*/" +
-	    "|" +
-	    // UNION attacks
-	    "UNION\\s+SELECT" +
-	    "|" +
-	    // EXEC sp_name or EXECUTE sp_name
-	    "EXEC(?:UTE)?\\s+\\w+" +
-	    "|" +
-	    // EXEC(...) or EXECUTE(...)
-	    "EXEC(?:UTE)?\\s*\\(",
-	    Pattern.CASE_INSENSITIVE | Pattern.DOTALL
-	);
 
 	public record WhereInfo(boolean exists, int position, String wherePrefix) {
 	}
@@ -54,8 +22,9 @@ public final class SqlUtils {
 	}
 
 	/**
-	 * Limpia y normaliza una consulta SQL.
-	 */
+    * Limpia y normaliza una consulta SQL.
+    * Elimina comentarios y normaliza espacios en blanco.
+    */
 	public static String cleanSql(String sql) {
 		if (sql == null || sql.trim().isEmpty()) {
 			return "";
@@ -70,6 +39,10 @@ public final class SqlUtils {
 		return cleaned.trim();
 	}
 
+    /**
+     * Analiza una consulta SQL para determinar si tiene cláusula WHERE
+     * y dónde agregar nuevas condiciones.
+     */
 	public static WhereInfo analyzeWhereClause(String sql) {
 		if (sql == null || sql.trim().isEmpty()) {
 			return new WhereInfo(false, -1, " WHERE ");
@@ -101,80 +74,6 @@ public final class SqlUtils {
 		String wherePrefix = exists ? " AND " : " WHERE ";
 
 		return new WhereInfo(exists, wherePos, wherePrefix);
-	}
-
-	/**
-	 * Validación LIGERA para SQL en archivos YAML. Asume que el SQL es código
-	 * confiable versionado en Git. Solo valida sintaxis básica, NO valores
-	 * hardcodeados.
-	 * 
-	 * Casos de uso: - Queries definidas en archivos YAML - SQL estático en
-	 * configuración - Código revisado en PRs
-	 */
-	public static void validateYamlQuerySyntax(String queryKey, String sql) {
-		if (!StringUtils.hasText(sql)) {
-			throw new InvalidQueryException(queryKey, "SQL must not be empty or null");
-		}
-
-		String trimmed = sql.trim().toUpperCase();
-
-		// Validar palabra clave inicial
-		if (!trimmed.matches(SQL_KEYWORDS_REGEX)) {
-			throw new InvalidQueryException(queryKey,
-					"SQL must start with SELECT, INSERT, UPDATE, DELETE, WITH, CREATE, DROP, or ALTER");
-		}
-
-		// Validar balance de paréntesis
-		if (!areParenthesesBalanced(sql)) {
-			throw new InvalidQueryException(queryKey, "Unbalanced parentheses in SQL");
-		}
-	}
-
-	/**
-	 * Validación ESTRICTA para FilterCriteria creados en runtime. Asume que el SQL
-	 * puede contener input de usuario no confiable. Valida TODO: sintaxis,
-	 * hardcoded values, patrones de inyección.
-	 * 
-	 * Casos de uso: - FilterCriteria.when() en código de aplicación - SQL
-	 * construido dinámicamente en runtime - Cualquier fragmento que pueda recibir
-	 * input de usuario
-	 */
-	public static void validateFilterCriteriaSafety(String sqlFragment, Object value) {
-		if (!StringUtils.hasText(sqlFragment)) {
-			throw new InvalidQueryException("FilterCriteria", "SQL fragment cannot be null or empty");
-		}
-
-		// Si hay un valor proporcionado, DEBE haber un parámetro nombrado
-		if (value != null) {
-			java.util.Set<String> params = extractParameterNames(sqlFragment);
-
-			if (params.isEmpty()) {
-				throw new InvalidQueryException("FilterCriteria",
-						"SQL fragment must use named parameters (:param) when a value is provided. " + "Fragment: '"
-								+ sqlFragment + "'. " + "This prevents SQL injection vulnerabilities.");
-			}
-		}
-
-		// Detectar patrones de SQL injection en el fragmento
-		if (SQL_INJECTION_PATTERNS.matcher(sqlFragment).find()) {
-			throw new InvalidQueryException("FilterCriteria",
-					"SQL fragment contains potential SQL injection patterns. " + "Fragment: '" + sqlFragment + "'. "
-							+ "Ensure you're using parameterized queries with named parameters.");
-		}
-
-		// Detectar valores hardcodeados en WHERE/AND/OR (patrón completo)
-		if (HARDCODED_STRING_PATTERN.matcher(sqlFragment).find()) {
-			throw new InvalidQueryException("FilterCriteria",
-					"SQL fragment contains hardcoded string value in WHERE/AND/OR clause. " + "Fragment: '"
-							+ sqlFragment + "'. " + "Use named parameters (:param) instead.");
-		}
-
-		// Detectar string concatenation peligrosa
-		if (sqlFragment.matches(".*=\\s*'[^:][^']*'.*")) {
-			throw new InvalidQueryException("FilterCriteria",
-					"SQL fragment contains hardcoded string value without parameter binding. " + "Fragment: '"
-							+ sqlFragment + "'. " + "Use named parameters (:param) instead.");
-		}
 	}
 
 	/**
@@ -260,15 +159,72 @@ public final class SqlUtils {
 			return SqlType.DDL;
 		} else if (trimmed.startsWith("ALTER")) {
 			return SqlType.DDL;
-		}
+		} else if (trimmed.startsWith("CALL") || 
+                trimmed.startsWith("EXEC")) {
+         return SqlType.PROCEDURE;
+        }
 
 		return SqlType.UNKNOWN;
 	}
 
 	/**
-	 * Tipos de consultas SQL.
-	 */
-	public enum SqlType {
-		SELECT, INSERT, UPDATE, DELETE, DDL, UNKNOWN
-	}
+     * Tipos de consultas SQL.
+     */
+    public enum SqlType {
+        SELECT,      // Consultas de lectura
+        INSERT,      // Inserciones
+        UPDATE,      // Actualizaciones
+        DELETE,      // Eliminaciones
+        DDL,         // Data Definition Language (CREATE, DROP, ALTER)
+        PROCEDURE,   // Llamadas a procedimientos almacenados
+        UNKNOWN      // Tipo no identificado
+    }
+    
+    /**
+     * Verifica si un tipo SQL requiere resultType.
+     */
+    public static boolean requiresResultType(SqlType type) {
+        return type == SqlType.SELECT || type == SqlType.PROCEDURE;
+    }
+    
+    /**
+     * Extrae el nombre de tabla principal de una query simple.
+     * Útil para logging y debugging.
+     */
+    public static String extractTableName(String sql) {
+        if (!StringUtils.hasText(sql)) {
+            return "unknown";
+        }
+        
+        String cleaned = cleanSql(sql).toUpperCase();
+        
+        // Para SELECT: extraer de FROM
+        if (cleaned.startsWith("SELECT")) {
+            Pattern pattern = Pattern.compile("FROM\\s+([\\w.]+)", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(cleaned);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        
+        // Para INSERT: extraer de INTO
+        if (cleaned.startsWith("INSERT")) {
+            Pattern pattern = Pattern.compile("INTO\\s+([\\w.]+)", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(cleaned);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        
+        // Para UPDATE/DELETE: extraer directamente después del comando
+        if (cleaned.startsWith("UPDATE") || cleaned.startsWith("DELETE")) {
+            Pattern pattern = Pattern.compile("(?:UPDATE|DELETE FROM)\\s+([\\w.]+)", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(cleaned);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        }
+        
+        return "unknown";
+    }
 }
