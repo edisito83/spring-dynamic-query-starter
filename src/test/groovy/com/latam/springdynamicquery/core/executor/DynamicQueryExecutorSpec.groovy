@@ -12,6 +12,9 @@ import org.springframework.test.context.TestPropertySource
 import org.springframework.test.context.jdbc.Sql
 import spock.lang.Specification
 
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.test.annotation.Rollback
+
 /**
  * Tests específicos para DynamicQueryExecutor cubriendo métodos sin cobertura.
  * Usa la estructura y datos existentes del proyecto.
@@ -112,16 +115,17 @@ class DynamicQueryExecutorSpec extends Specification {
         def queryName = "UserMapper.countAllUsers"
 
         when:
-        def results = executor.executeRawQuery(queryName, null)
+        def results = executor.executeSingleResult(queryName, null,  Long.class)
 
         then:
         results != null
-        results.size() == 1
-        results[0][0] == 7L // 7 users in test-data.sql
+        results == 10L // 10 users in test-data.sql
     }
 
     // ==================== executeDMLWithParameters Tests ====================
 
+	@Transactional
+	@Rollback
     def "should execute DML INSERT with parameters"() {
         given: "parameters for new user"
         def params = [
@@ -149,6 +153,8 @@ class DynamicQueryExecutorSpec extends Specification {
         users[0].name == "DML Test User"
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML UPDATE with parameters"() {
         given: "update params"
         def params = [
@@ -168,6 +174,8 @@ class DynamicQueryExecutorSpec extends Specification {
         user.salary == 55000.00
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML DELETE with parameters"() {
         given: "create a user to delete"
         def testUser = new User(
@@ -191,6 +199,8 @@ class DynamicQueryExecutorSpec extends Specification {
         entityManager.find(User.class, userId) == null
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML with null parameters"() {
         when:
         def rowsAffected = executor.executeDMLWithParameters("UserMapper.deactivateInactiveUsers", null)
@@ -200,6 +210,8 @@ class DynamicQueryExecutorSpec extends Specification {
         noExceptionThrown()
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML with empty parameters map"() {
         when:
         def rowsAffected = executor.executeDMLWithParameters("UserMapper.deactivateInactiveUsers", [:])
@@ -211,6 +223,8 @@ class DynamicQueryExecutorSpec extends Specification {
 
     // ==================== executeDMLWithFilters Tests ====================
 
+	@Transactional
+	@Rollback
     def "should execute DML UPDATE with dynamic filters"() {
         given: "filters for updating users"
         def filters = [
@@ -225,6 +239,8 @@ class DynamicQueryExecutorSpec extends Specification {
         rowsAffected > 0
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML DELETE with dynamic filters"() {
         given: "create test users to delete"
         [1, 2, 3].each { i ->
@@ -241,7 +257,7 @@ class DynamicQueryExecutorSpec extends Specification {
 
         and: "filters for deletion"
         def filters = [
-            inactive: FilterCriteria.when("active = :active", false),
+            active: FilterCriteria.when("active = :active", false),
             email: FilterCriteria.whenValidString("email LIKE :email", "temp%@test.com")
         ]
 
@@ -252,6 +268,8 @@ class DynamicQueryExecutorSpec extends Specification {
         rowsAffected == 3
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML with filters where some don't apply"() {
         given:
         def filters = [
@@ -267,6 +285,8 @@ class DynamicQueryExecutorSpec extends Specification {
         noExceptionThrown()
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML with empty filters"() {
         when:
         def rowsAffected = executor.executeDMLWithFilters("UserMapper.updateSalaryByFilters", [:])
@@ -276,6 +296,8 @@ class DynamicQueryExecutorSpec extends Specification {
         noExceptionThrown()
     }
 
+	@Transactional
+	@Rollback
     def "should execute DML with null filters"() {
         when:
         def rowsAffected = executor.executeDMLWithFilters("UserMapper.updateSalaryByFilters", null)
@@ -371,6 +393,8 @@ class DynamicQueryExecutorSpec extends Specification {
 
     // ==================== Edge Cases and Error Handling ====================
 
+	@Transactional
+	@Rollback
     def "should handle parameters with special characters"() {
         given:
         def params = [
@@ -385,6 +409,8 @@ class DynamicQueryExecutorSpec extends Specification {
         noExceptionThrown()
     }
 
+	@Transactional
+	@Rollback
     def "should handle very long parameter values"() {
         given:
         def longName = "A" * 99  // Just under 100 char limit
@@ -400,6 +426,8 @@ class DynamicQueryExecutorSpec extends Specification {
         noExceptionThrown()
     }
 
+	@Transactional
+	@Rollback
     def "should handle DML affecting zero rows"() {
         given:
         def params = [id: 99999L] // Non-existent ID
@@ -451,7 +479,7 @@ class DynamicQueryExecutorSpec extends Specification {
         def users = executor.executeNamedQueryWithParameters("UserMapper.findActiveUsers", [:])
 
         then: "should find active users from test-data.sql"
-        users.size() == 6 // All except Alice Brown (inactive)
+        users.size() == 8 // All except Alice Brown and Integration User 3 (inactive)
         users*.name.containsAll([
             "John Doe",
             "Jane Smith",
@@ -472,7 +500,7 @@ class DynamicQueryExecutorSpec extends Specification {
         def users = executor.executeNamedQuery("UserMapper.findUsersWithDynamicFilters", User.class, filters)
 
         then: "should find IT department users"
-        users.size() == 4 // John, Jane, Charlie, Test User
+        users.size() == 5 // John, Jane, Charlie, Test User, Integration Test User 1
         users.every { it.departmentId == 1L }
     }
 

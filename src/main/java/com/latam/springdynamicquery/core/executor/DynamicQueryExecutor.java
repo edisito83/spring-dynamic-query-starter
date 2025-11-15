@@ -1,5 +1,7 @@
 package com.latam.springdynamicquery.core.executor;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -97,9 +99,15 @@ public class DynamicQueryExecutor {
                 query = entityManager.createNativeQuery(sql, resultClass);
             }
             
+            Map<String, Object> completeParams = buildCompleteParameterMap(
+                queryDef,
+                parameters != null ? parameters : Collections.emptyMap(),
+                queryName
+            );
+            
             // Establecer parámetros directamente sin construir SQL dinámico
-            if (parameters != null) {
-                for (Map.Entry<String, Object> entry : parameters.entrySet()) {
+            if (!completeParams.isEmpty()) {
+                for (Map.Entry<String, Object> entry : completeParams.entrySet()) {
                     try {
                         query.setParameter(entry.getKey(), entry.getValue());
                         
@@ -250,7 +258,24 @@ public class DynamicQueryExecutor {
                 logQueryExecution(queryName, finalSql, filters);
             }
             
-            Object result = query.getSingleResult();
+            List<?> results = query.getResultList();
+            
+            if (results.isEmpty()) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Query '{}' returned no results, returning null", queryName);
+                }
+                return null;
+            }
+            
+            if (results.size() > 1) {
+                if (log.isWarnEnabled()) {
+                    log.warn("Query '{}' expected single result but returned {} results. " +
+                            "Returning first result. Consider adding LIMIT 1 or reviewing query logic.",
+                            queryName, results.size());
+                }
+            }
+            
+            Object result = results.get(0);
             
             return convertSingleResult(result, resultType);
         } finally {
@@ -297,20 +322,24 @@ public class DynamicQueryExecutor {
            
            Query query = entityManager.createNativeQuery(sql);
            
+           Map<String, Object> completeParams = buildCompleteParameterMap(
+               queryDef,
+               parameters != null ? parameters : Collections.emptyMap(),
+               queryName
+           );
+           
            // Establecer parámetros
-           if (parameters != null) {
-               for (Map.Entry<String, Object> entry : parameters.entrySet()) {
-                   try {
-                       query.setParameter(entry.getKey(), entry.getValue());
-                       
-                       if (properties.getLogging().isLogParameters()) {
-                           log.debug("Set parameter '{}' = {} for DML query '{}'", 
-                                   entry.getKey(), entry.getValue(), queryName);
-                       }
-                   } catch (IllegalArgumentException e) {
-                       log.warn("Parameter '{}' not found in DML query '{}', skipping", 
-                               entry.getKey(), queryName);
+           for (Map.Entry<String, Object> entry : completeParams.entrySet()) {
+               try {
+                   query.setParameter(entry.getKey(), entry.getValue());
+                   
+                   if (properties.getLogging().isLogParameters()) {
+                       log.debug("Set parameter '{}' = {} for DML query '{}'", 
+                               entry.getKey(), entry.getValue(), queryName);
                    }
+               } catch (IllegalArgumentException e) {
+                   log.warn("Parameter '{}' not found in DML query '{}', skipping", 
+                           entry.getKey(), queryName);
                }
            }
            
@@ -492,5 +521,56 @@ public class DynamicQueryExecutor {
                     .forEach(entry -> log.debug("  Parameter '{}' = {}", 
                             entry.getKey(), entry.getValue().getValue()));
         }
+    }
+    
+    /**
+     * NUEVO MÉTODO: Construye un mapa completo de parámetros incluyendo NULL para parámetros opcionales.
+     * 
+     * Este método resuelve el problema donde Hibernate requiere que TODOS los parámetros nombrados
+     * en el SQL tengan valores asignados, incluso si son opcionales según la metadata.
+     * 
+     * @param queryDef Definición de la query con metadata de parámetros
+     * @param providedParams Parámetros provistos por el llamador
+     * @param queryName Nombre de la query (para mensajes de error)
+     * @return Mapa completo con todos los parámetros, usando NULL para opcionales faltantes
+     * @throws InvalidQueryException si falta un parámetro requerido
+     */
+    private Map<String, Object> buildCompleteParameterMap(
+            SqlMapperYaml.QueryDefinition queryDef,
+            Map<String, Object> providedParams,
+            String queryName) {
+        
+        // Si no hay metadata o no hay parámetros definidos, retornar lo provisto
+        if (queryDef == null || !queryDef.hasParameters()) {
+            return providedParams;
+        }
+        
+        // Crear una copia del mapa provisto
+        Map<String, Object> completeParams = new HashMap<>(providedParams);
+        
+        // Procesar cada parámetro definido en la metadata
+        for (SqlMapperYaml.QueryDefinition.ParameterMapping paramDef : queryDef.getParameters()) {
+            String paramName = paramDef.getName();
+            
+            if (!completeParams.containsKey(paramName)) {
+                if (paramDef.isRequired()) {
+                    // Parámetro requerido faltante - lanzar excepción
+                    throw new InvalidQueryException(queryName,
+                        String.format("Required parameter '%s' not provided. " +
+                                "Required parameters must be included in the parameters map.", 
+                                paramName));
+                } else {
+                    // Parámetro opcional faltante - agregar como NULL
+                    completeParams.put(paramName, null);
+                    
+                    if (properties.getLogging().isLogParameters()) {
+                        log.debug("Optional parameter '{}' not provided for query '{}', setting to NULL", 
+                                paramName, queryName);
+                    }
+                }
+            }
+        }
+        
+        return completeParams;
     }
 }

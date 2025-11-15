@@ -3,14 +3,12 @@ description: User queries for testing
 queries:
   - id: findUserById
     description: Find user by ID
-    resultType: entity
     resultClass: com.latam.springdynamicquery.testmodel.User
     sql: |
       SELECT * FROM users WHERE id = :id
 
   - id: findActiveUsers
     description: Find all active users
-    resultType: entity
     resultClass: com.latam.springdynamicquery.testmodel.User
     sql: |
       SELECT * FROM users WHERE active = true
