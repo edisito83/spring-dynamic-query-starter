@@ -86,3 +86,161 @@ queries:
       - name: departmentCodes
         type: list
         required: false
+
+  # ==================== DML INSERT Queries ====================
+  
+  - id: insertUser
+    description: Insert new user
+    resultType: none
+    sql: |
+      INSERT INTO users (name, email, age, status, active, department_id, salary, employee_number)
+      VALUES (:name, :email, :age, :status, :active, :departmentId, :salary, :employeeNumber)
+    parameters:
+      - name: name
+        type: string
+        required: true
+      - name: email
+        type: string
+        required: true
+      - name: age
+        type: integer
+        required: false
+      - name: status
+        type: string
+        required: false
+      - name: active
+        type: boolean
+        required: false
+      - name: departmentId
+        type: long
+        required: false
+      - name: salary
+        type: decimal
+        required: false
+      - name: employeeNumber
+        type: string
+        required: false
+
+  # ==================== DML UPDATE Queries ====================
+  
+  - id: updateUserSalary
+    description: Update user salary
+    resultType: none
+    sql: |
+      UPDATE users 
+      SET salary = :salary, updated_date = CURRENT_TIMESTAMP
+      WHERE id = :id
+    parameters:
+      - name: id
+        type: long
+        required: true
+      - name: salary
+        type: decimal
+        required: true
+
+  - id: updateSalaryByFilters
+    description: Update salary with dynamic filters
+    resultType: none
+    sql: |
+      UPDATE users 
+      SET salary = COALESCE(salary, 50000) + 5000, updated_date = CURRENT_TIMESTAMP
+      WHERE 1=1
+    parameters:
+      - name: departmentId
+        type: long
+        required: false
+      - name: minAge
+        type: integer
+        required: false
+      - name: active
+        type: boolean
+        required: false
+
+  - id: deactivateInactiveUsers
+    description: Deactivate users with specific status
+    resultType: none
+    sql: |
+      UPDATE users 
+      SET active = false
+      WHERE status = 'INACTIVE'
+
+  # ==================== DML DELETE Queries ====================
+  
+  - id: deleteUser
+    description: Delete user by ID
+    resultType: none
+    sql: |
+      DELETE FROM users WHERE id = :id
+    parameters:
+      - name: id
+        type: long
+        required: true
+
+  - id: deleteUsersByFilters
+    description: Delete users with dynamic filters
+    resultType: none
+    sql: |
+      DELETE FROM users WHERE 1=1
+    parameters:
+      - name: active
+        type: boolean
+        required: false
+      - name: email
+        type: string
+        required: false
+      - name: departmentId
+        type: long
+        required: false
+
+  # ==================== Raw Query (Object[]) ====================
+  
+  - id: getUsersWithDepartmentInfo
+    description: Get users with department info as Object arrays
+    resultType: raw
+    sql: |
+      SELECT 
+        u.id, 
+        u.name, 
+        u.email,
+        u.active,
+        d.name as department_name,
+        d.code as department_code
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE 1=1
+    parameters:
+      - name: active
+        type: boolean
+        required: false
+
+  - id: countAllUsers
+    description: Count all users (returns raw Object[])
+    resultType: scalar
+    resultClass: java.lang.Long
+    sql: |
+      SELECT COUNT(*) FROM users
+
+  # ==================== Aggregation Queries ====================
+  
+  - id: getMaxAge
+    description: Get maximum age
+    resultType: scalar
+    resultClass: java.lang.Integer
+    sql: |
+      SELECT MAX(age) FROM users WHERE age IS NOT NULL
+
+  - id: getAverageSalary
+    description: Get average salary
+    resultType: scalar
+    resultClass: java.lang.Double
+    sql: |
+      SELECT AVG(CAST(salary AS DOUBLE)) FROM users WHERE salary IS NOT NULL
+
+  - id: countUsersWithOrders
+    description: Count users that have orders
+    resultType: scalar
+    resultClass: java.lang.Long
+    sql: |
+      SELECT COUNT(DISTINCT u.id) 
+      FROM users u
+      INNER JOIN orders o ON u.id = o.user_id
